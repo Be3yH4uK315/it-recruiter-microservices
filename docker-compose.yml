@@ -1,0 +1,520 @@
+version: '3.8'
+
+services:
+
+  # ==============================================================================
+  # FRONTEND & GATEWAY
+  # ==============================================================================
+
+  telegram-bot:
+    build:
+      context: ./services/bot
+    container_name: telegram_bot
+    restart: unless-stopped
+    volumes:
+      - ./services/bot:/app
+    environment:
+      - LOG_FILE=/tmp/bot.log
+      - LOG_LEVEL=${LOG_LEVEL}
+      - INTERNAL_BOT_SECRET=${INTERNAL_BOT_SECRET}
+      - TELEGRAM_BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_IDS=${ADMIN_IDS}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL}
+      - CANDIDATE_SERVICE_URL=${GATEWAY_URL}/v1
+      - EMPLOYER_SERVICE_URL=${GATEWAY_URL}/v1
+      - SEARCH_SERVICE_URL=${GATEWAY_URL}/v1
+      - FILE_SERVICE_URL=${GATEWAY_URL}/v1
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+    depends_on:
+      - gateway
+      - redis
+    networks:
+      - microservices_network
+
+  gateway:
+    build:
+      context: ./infrastructure/nginx
+    container_name: api_gateway
+    restart: unless-stopped
+    ports:
+      - "${PORT_GATEWAY}:80"
+    depends_on:
+      - auth-service
+      - candidate-api
+      - employer-service
+      - search-service
+      - file-service
+    networks:
+      - microservices_network
+
+  # ==============================================================================
+  # AUTH SERVICE
+  # ==============================================================================
+
+  auth-service:
+    build:
+      context: ./services/auth
+    container_name: auth_service
+    restart: unless-stopped
+    volumes:
+      - ./services/auth:/app
+    ports:
+      - "${PORT_AUTH}:8000"
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - INTERNAL_BOT_SECRET=${INTERNAL_BOT_SECRET}
+      - DATABASE_URL=${AUTH_DATABASE_URL}
+      - TELEGRAM_BOT_TOKEN=${BOT_TOKEN}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS}
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    networks:
+      - microservices_network
+
+  auth-db:
+    image: postgres:15-alpine
+    container_name: auth_db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${AUTH_DB_USER}
+      - POSTGRES_PASSWORD=${AUTH_DB_PASSWORD}
+      - POSTGRES_DB=${AUTH_DB_NAME}
+    volumes:
+      - auth_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USER} -d ${AUTH_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservices_network
+
+  # ==============================================================================
+  # CANDIDATE SERVICE
+  # ==============================================================================
+
+  candidate-api:
+    build:
+      context: ./services/candidate
+    container_name: candidate_api
+    restart: unless-stopped
+    volumes:
+      - ./services/candidate:/app
+    ports:
+      - "${PORT_CANDIDATE}:8000"
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - DATABASE_URL=${CANDIDATE_DATABASE_URL}
+      - RABBITMQ_HOST=${RABBITMQ_HOST}
+      - RABBITMQ_PORT=${RABBITMQ_PORT}
+      - RABBITMQ_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_PASS=${RABBITMQ_DEFAULT_PASS}
+      - CANDIDATE_EXCHANGE_NAME=${CANDIDATE_EXCHANGE_NAME}
+      - DLQ_EXCHANGE_NAME=${CANDIDATE_EXCHANGE_NAME}
+      - FILE_SERVICE_URL=${FILE_SERVICE_URL}/v1
+      - EMPLOYER_SERVICE_URL=${EMPLOYER_SERVICE_URL}/v1
+      - CIRCUIT_BREAKER_FAILURE_THRESHOLD=${CIRCUIT_BREAKER_FAILURE_THRESHOLD}
+      - CIRCUIT_BREAKER_RECOVERY_TIMEOUT=${CIRCUIT_BREAKER_RECOVERY_TIMEOUT}
+      - RATE_LIMIT_DEFAULT=${RATE_LIMIT_DEFAULT}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+    depends_on:
+      candidate-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: sh -c "alembic upgrade head && uvicorn app.main_candidate:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - microservices_network
+
+  candidate-worker:
+    build:
+      context: ./services/candidate
+    container_name: candidate_worker
+    restart: unless-stopped
+    volumes:
+      - ./services/candidate:/app
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - DATABASE_URL=${CANDIDATE_DATABASE_URL}
+      - RABBITMQ_HOST=${RABBITMQ_HOST}
+      - RABBITMQ_PORT=${RABBITMQ_PORT}
+      - RABBITMQ_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_PASS=${RABBITMQ_DEFAULT_PASS}
+      - CANDIDATE_EXCHANGE_NAME=${CANDIDATE_EXCHANGE_NAME}
+      - DLQ_EXCHANGE_NAME=${CANDIDATE_EXCHANGE_NAME}
+      - FILE_SERVICE_URL=${FILE_SERVICE_URL}/v1
+      - EMPLOYER_SERVICE_URL=${EMPLOYER_SERVICE_URL}/v1
+      - CIRCUIT_BREAKER_FAILURE_THRESHOLD=${CIRCUIT_BREAKER_FAILURE_THRESHOLD}
+      - CIRCUIT_BREAKER_RECOVERY_TIMEOUT=${CIRCUIT_BREAKER_RECOVERY_TIMEOUT}
+      - RATE_LIMIT_DEFAULT=${RATE_LIMIT_DEFAULT}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+    depends_on:
+      candidate-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: ["python", "-m", "app.worker"]
+    networks:
+      - microservices_network
+
+  candidate-db:
+    image: postgres:15-alpine
+    container_name: candidate_db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${CANDIDATE_DB_USER}
+      - POSTGRES_PASSWORD=${CANDIDATE_DB_PASSWORD}
+      - POSTGRES_DB=${CANDIDATE_DB_NAME}
+    volumes:
+      - candidate_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CANDIDATE_DB_USER} -d ${CANDIDATE_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservices_network
+
+  # ==============================================================================
+  # EMPLOYER SERVICE
+  # ==============================================================================
+
+  employer-service:
+    build:
+      context: ./services/employer
+    container_name: employer_service
+    restart: unless-stopped
+    volumes:
+      - ./services/employer:/app
+    ports:
+      - "${PORT_EMPLOYER}:8000"
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - DATABASE_URL=${EMPLOYER_DATABASE_URL}
+      - CANDIDATE_SERVICE_URL=${CANDIDATE_SERVICE_URL}/v1
+      - SEARCH_SERVICE_URL=${SEARCH_SERVICE_URL}/v1
+      - CIRCUIT_BREAKER_FAILURE_THRESHOLD=${CIRCUIT_BREAKER_FAILURE_THRESHOLD}
+      - CIRCUIT_BREAKER_RECOVERY_TIMEOUT=${CIRCUIT_BREAKER_RECOVERY_TIMEOUT}
+      - RATE_LIMIT_DEFAULT=${RATE_LIMIT_DEFAULT}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+    command: sh -c "alembic upgrade head && uvicorn app.main_employer:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      employer-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - microservices_network
+
+  employer-db:
+    image: postgres:15-alpine
+    container_name: employer_db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${EMPLOYER_DB_USER}
+      - POSTGRES_PASSWORD=${EMPLOYER_DB_PASSWORD}
+      - POSTGRES_DB=${EMPLOYER_DB_NAME}
+    volumes:
+      - employer_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${EMPLOYER_DB_USER} -d ${EMPLOYER_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservices_network
+
+  # ==============================================================================
+  # SEARCH SERVICE (ML & Elastic)
+  # ==============================================================================
+
+  search-service:
+    build:
+      context: ./services/search
+    container_name: search_service
+    restart: unless-stopped
+    volumes:
+      - ./services/search:/app
+    ports:
+      - "${PORT_SEARCH}:8000"
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - HF_HOME=/app/model_cache
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - CANDIDATE_INDEX_ALIAS=${CANDIDATE_INDEX_ALIAS}
+      - MILVUS_HOST=${MILVUS_HOST}
+      - MILVUS_PORT=${MILVUS_PORT}
+      - MILVUS_COLLECTION_NAME=${MILVUS_COLLECTION_NAME}
+      - RABBITMQ_HOST=${RABBITMQ_HOST}
+      - RABBITMQ_PORT=${RABBITMQ_PORT}
+      - RABBITMQ_USER=${RABBITMQ_USER}
+      - RABBITMQ_PASS=${RABBITMQ_PASS}
+      - CANDIDATE_SERVICE_URL=${CANDIDATE_SERVICE_URL}/v1
+      - SENTENCE_MODEL_NAME=${SENTENCE_MODEL_NAME}
+      - RANKER_MODEL_NAME=${RANKER_MODEL_NAME}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+      - RETRIEVAL_SIZE=${RETRIEVAL_SIZE}
+      - RERANK_TOP_K=${RERANK_TOP_K}
+      - RRF_K=${RRF_K}
+      - FACTOR_NO_SKILLS=${FACTOR_NO_SKILLS}
+      - FACTOR_EXP_MISMATCH=${FACTOR_EXP_MISMATCH}
+      - FACTOR_LOCATION_MATCH=${FACTOR_LOCATION_MATCH}
+      - CANDIDATE_EXCHANGE_NAME=${CANDIDATE_EXCHANGE_NAME}
+      - DLQ_EXCHANGE_NAME=${DLQ_EXCHANGE_NAME}
+    command: sh -c "uvicorn app.main_search:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 40s
+      timeout: 10s
+      retries: 3
+    networks:
+      - microservices_network
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    container_name: search_elastic
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservices_network
+
+  # ==============================================================================
+  # FILE SERVICE (S3)
+  # ==============================================================================
+
+  file-service:
+    build:
+      context: ./services/file
+    container_name: file_service
+    restart: unless-stopped
+    volumes:
+      - ./services/file:/app
+    ports:
+      - "${PORT_FILE}:8000"
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - DATABASE_URL=${FILE_DATABASE_URL}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+      - S3_PUBLIC_DOMAIN=${S3_PUBLIC_DOMAIN}
+      - S3_ACCESS_KEY=${MINIO_ROOT_USER}
+      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - S3_REGION=${S3_REGION}
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+    command: sh -c "alembic upgrade head && uvicorn app.main_file:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      file-db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - microservices_network
+
+  file-db:
+    image: postgres:15-alpine
+    container_name: file_db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${FILE_DB_USER}
+      - POSTGRES_PASSWORD=${FILE_DB_PASSWORD}
+      - POSTGRES_DB=${FILE_DB_NAME}
+    volumes:
+      - file_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${FILE_DB_USER} -d ${FILE_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservices_network
+
+  # ==============================================================================
+  # SHARED INFRASTRUCTURE
+  # ==============================================================================
+
+  redis:
+    image: redis:7-alpine
+    container_name: shared_redis
+    restart: unless-stopped
+    ports:
+      - "${PORT_REDIS}:6379"
+    networks:
+      - microservices_network
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: shared_rabbitmq
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+    ports:
+      - "${PORT_RABBITMQ}:5672"
+      - "${PORT_RABBITMQ_UI}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - microservices_network
+
+  # Milvus Stack
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd_data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    networks:
+      - microservices_network
+
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: minio server /minio_data --console-address ":9001"
+    volumes:
+      - minio_data:/minio_data
+    ports:
+      - "${PORT_MINIO}:9000"
+      - "${PORT_MINIO_CONSOLE}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - microservices_network
+
+  milvus:
+    image: milvusdb/milvus:v2.3.3
+    container_name: search_milvus
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - milvus_data:/var/lib/milvus
+    depends_on:
+      - "etcd"
+      - "minio"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - microservices_network
+
+  # --- OBSERVABILITY ---
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - "${PORT_PROMETHEUS}:9090"
+    networks:
+      - microservices_network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "${PORT_GRAFANA}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+    networks:
+      - microservices_network
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    ports:
+      - "${PORT_JAEGER_UI}:16686"
+      - "4317:4317"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - microservices_network
+
+networks:
+  microservices_network:
+    driver: bridge
+
+volumes:
+  auth_postgres_data:
+  candidate_postgres_data:
+  rabbitmq_data:
+  employer_postgres_data:
+  es_data:
+  milvus_data:
+  etcd_data:
+  minio_data:
+  file_postgres_data:
