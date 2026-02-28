@@ -1,0 +1,43 @@
+# --- Core Framework ---
+fastapi==0.118.0
+uvicorn==0.37.0
+uvloop==0.21.0
+pydantic==2.11.9
+pydantic-settings==2.11.0
+
+# --- Search & Vector DB ---
+elasticsearch==8.11.0
+pymilvus>=2.4.0
+
+# --- Machine Learning ---
+sentence-transformers==5.1.1
+
+# --- Message Broker ---
+aio-pika==9.5.7
+
+# --- Security & Rate Limiting ---
+python-jose[cryptography]==3.3.0
+slowapi==0.1.9
+
+# --- Utilities ---
+httpx==0.28.1
+aiohttp==3.9.5
+tenacity==8.2.3
+structlog==23.3.0
+setuptools==69.0.3
+
+# --- Observability ---
+prometheus-fastapi-instrumentator==7.0.0
+opentelemetry-api==1.22.0
+opentelemetry-sdk==1.22.0
+opentelemetry-exporter-otlp==1.22.0
+opentelemetry-instrumentation-fastapi==0.43b0
+opentelemetry-instrumentation-httpx==0.43b0
+
+# --- Testing ---
+pytest==7.4.3
+pytest-asyncio==0.23.2
+pytest-mock==3.12.0
+pytest-cov==4.1.0
+respx==0.20.2
+locust==2.23.1
