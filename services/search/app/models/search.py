@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
@@ -37,11 +37,27 @@ class CandidatePreview(BaseModel):
     headline_role: str
     experience_years: float
     location: Optional[str]
-    skills: List[str]
+    skills: List[Union[str, Dict[str, Any]]] = Field(default_factory=list)
     match_score: float = 0.0
     explanation: Optional[Dict[str, float]] = None
     english_level: Optional[str] = None
     about_me: Optional[str] = None
+
+    @field_validator('skills', mode='before')
+    @classmethod
+    def normalize_skills(cls, v):
+        normalized = []
+        if not v:
+            return []
+        for item in v:
+            if isinstance(item, str):
+                normalized.append(item)
+            elif isinstance(item, dict) and "skill" in item:
+                skill_str = item["skill"]
+                if item.get("level"):
+                    skill_str += f" ({item['level']}/5)"
+                normalized.append(skill_str)
+        return normalized
 
 class NextCandidateResponse(BaseModel):
     candidate: Optional[CandidatePreview]
