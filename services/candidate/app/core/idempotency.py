@@ -20,10 +20,9 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
         async with AsyncSessionLocal() as db:
             existing = await db.get(IdempotencyKey, key)
             if existing:
-                logger.info("Idempotency hit", key=key)
+                logger.info("idempotency_hit", key=key)
                 return JSONResponse(
-                    content=existing.response_body, 
-                    status_code=existing.status_code
+                    content=existing.response_body, status_code=existing.status_code
                 )
 
         response = await call_next(request)
@@ -32,10 +31,10 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
             response_body = b""
             async for chunk in response.body_iterator:
                 response_body += chunk
-            
+
             async def new_iterator():
                 yield response_body
-            
+
             response.body_iterator = new_iterator()
 
             try:
@@ -44,13 +43,34 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                     existing = await db.get(IdempotencyKey, key)
                     if not existing:
                         record = IdempotencyKey(
-                            key=key, 
-                            response_body=json_body, 
-                            status_code=response.status_code
+                            key=key,
+                            response_body=json_body,
+                            status_code=response.status_code,
                         )
                         db.add(record)
-                        await db.commit()
+                        try:
+                            await db.commit()
+                            logger.info("idempotency_key_saved", key=key)
+                        except Exception as e:
+                            await db.rollback()
+                            logger.error(
+                                "idempotency_save_failed",
+                                key=key,
+                                error=str(e),
+                                exc_info=True,
+                            )
+                    else:
+                        logger.info("idempotency_key_already_exists", key=key)
+            except json.JSONDecodeError:
+                logger.warning(
+                    "idempotency_json_decode_error", key=key, response_length=len(response_body)
+                )
             except Exception as e:
-                logger.error("Failed to save idempotency key", error=str(e))
+                logger.error(
+                    "idempotency_unexpected_error",
+                    key=key,
+                    error=str(e),
+                    exc_info=True,
+                )
 
         return response
