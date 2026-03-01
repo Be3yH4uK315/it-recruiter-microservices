@@ -131,7 +131,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    command: sh -c "alembic upgrade head && uvicorn app.main_candidate:app --host 0.0.0.0 --port 8000"
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -217,7 +217,7 @@ services:
       - RATE_LIMIT_DEFAULT=${RATE_LIMIT_DEFAULT}
       - SECRET_KEY=${SECRET_KEY}
       - ALGORITHM=${ALGORITHM}
-    command: sh -c "alembic upgrade head && uvicorn app.main_employer:app --host 0.0.0.0 --port 8000"
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     depends_on:
       employer-db:
         condition: service_healthy
@@ -288,7 +288,7 @@ services:
       - FACTOR_LOCATION_MATCH=${FACTOR_LOCATION_MATCH}
       - CANDIDATE_EXCHANGE_NAME=${CANDIDATE_EXCHANGE_NAME}
       - DLQ_EXCHANGE_NAME=${DLQ_EXCHANGE_NAME}
-    command: sh -c "uvicorn app.main_search:app --host 0.0.0.0 --port 8000"
+    command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port 8000"
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -349,7 +349,7 @@ services:
       - MAX_FILE_SIZE=${MAX_FILE_SIZE}
       - SECRET_KEY=${SECRET_KEY}
       - ALGORITHM=${ALGORITHM}
-    command: sh -c "alembic upgrade head && uvicorn app.main_file:app --host 0.0.0.0 --port 8000"
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     depends_on:
       file-db:
         condition: service_healthy
@@ -471,7 +471,7 @@ services:
     container_name: prometheus
     restart: unless-stopped
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
     ports:
