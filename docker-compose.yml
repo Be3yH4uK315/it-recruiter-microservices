@@ -490,6 +490,10 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     depends_on:
       - prometheus
+    volumes:
+      - ./infrastructure/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./infrastructure/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./infrastructure/grafana/provisioning/dashboards:/var/lib/grafana/dashboards
     networks:
       - microservices_network
 
