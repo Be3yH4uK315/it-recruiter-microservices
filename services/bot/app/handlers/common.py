@@ -51,7 +51,7 @@ async def cq_select_employer(callback: CallbackQuery, state: FSMContext) -> None
     )
     
     if not employer_profile:
-        await callback.message.answer(messages.Messages.employer_states.EmployerSearch.EMPLOYER_ERROR)
+        await callback.message.answer(messages.Messages.EmployerSearch.EMPLOYER_ERROR)
         return
 
     await state.update_data(employer_profile=employer_profile)
@@ -61,11 +61,11 @@ async def cq_select_employer(callback: CallbackQuery, state: FSMContext) -> None
         logger.info(f"Employer {user_id} has company '{company}'. Proceeding to filters.")
         await state.update_data(filter_step='role', filters={})
         await state.set_state(employer.EmployerSearch.entering_filters)
-        await callback.message.edit_text(messages.Messages.employer_states.EmployerSearch.STEP_1)
+        await callback.message.edit_text(messages.Messages.EmployerSearch.STEP_1)
     else:
         logger.info(f"Employer {user_id} missing company name. Asking user.")
         await state.set_state(employer.EmployerSearch.entering_company_name)
-        await callback.message.edit_text(messages.Messages.employer_states.EmployerSearch.ENTER_COMPANY_NAME)
+        await callback.message.edit_text(messages.Messages.EmployerSearch.ENTER_COMPANY_NAME)
 
 @router.message(employer.EmployerSearch.entering_company_name)
 async def handle_company_name(message: Message, state: FSMContext):
@@ -94,7 +94,7 @@ async def handle_company_name(message: Message, state: FSMContext):
             await state.update_data(employer_profile=updated_profile)
             await state.update_data(filter_step='role', filters={})
             await state.set_state(employer.EmployerSearch.entering_filters)
-            await message.answer(messages.Messages.employer_states.EmployerSearch.STEP_1)
+            await message.answer(messages.Messages.EmployerSearch.STEP_1)
         else:
             await message.answer(messages.Messages.Common.API_ERROR)
             
@@ -113,11 +113,11 @@ async def cmd_search(message: Message, state: FSMContext) -> None:
     if employer_profile and not employer_profile.get("company"):
         await state.update_data(employer_profile=employer_profile)
         await state.set_state(employer.EmployerSearch.entering_company_name)
-        await message.answer(messages.Messages.employer_states.EmployerSearch.ENTER_COMPANY_NAME)
+        await message.answer(messages.Messages.EmployerSearch.ENTER_COMPANY_NAME)
     else:
         await state.update_data(filter_step='role')
         await state.set_state(employer.EmployerSearch.entering_filters)
-        await message.answer(messages.Messages.employer_states.EmployerSearch.STEP_1)
+        await message.answer(messages.Messages.EmployerSearch.STEP_1)
 
 @router.message(Command("admin_reindex"))
 async def cmd_admin_reindex(message: Message):

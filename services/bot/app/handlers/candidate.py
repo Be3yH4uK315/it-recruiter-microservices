@@ -618,10 +618,10 @@ async def handle_basic_input(message: Message, state: FSMContext) -> None:
     field_name = field_to_edit if mode == 'edit' else current_field
     if not field_name: logger.warning(f"No field identified..."); await message.answer(Messages.Common.INVALID_INPUT); return
 
-    validators = { 'display_name': (validators.validate_name, Messages.Profile.NAME_INVALID), 'headline_role': (validators.validate_headline_role, Messages.Profile.ROLE_INVALID), 'location': (validators.validate_location, Messages.Profile.LOCATION_INVALID) }
+    validator = { 'display_name': (validators.validate_name, Messages.Profile.NAME_INVALID), 'headline_role': (validators.validate_headline_role, Messages.Profile.ROLE_INVALID), 'location': (validators.validate_location, Messages.Profile.LOCATION_INVALID) }
     
-    if field_name in validators:
-        validator_func, error_msg = validators[field_name]
+    if field_name in validator:
+        validator_func, error_msg = validator[field_name]
         if not validator_func(input_text):
             await message.answer(error_msg)
             prompts = { 'display_name': Messages.Profile.ENTER_NAME, 'headline_role': Messages.Profile.ENTER_ROLE, 'location': Messages.Profile.ENTER_LOCATION }
