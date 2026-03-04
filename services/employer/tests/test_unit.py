@@ -24,6 +24,10 @@ async def test_get_next_candidate_success(employer_service, mock_employer_repo):
     mock_session = MagicMock()
     mock_session.filters = {"role": "Developer"}
     mock_employer_repo.get_session.return_value = mock_session
+    mock_employer_repo.get_by_id.return_value = MagicMock(
+        id=uuid4(),
+        telegram_id=123
+    )
     
     from app.core.resources import resources
     resources.http_client = AsyncMock()
@@ -76,7 +80,11 @@ async def test_request_contact_public(employer_service, mock_employer_repo):
     resources.http_client.get.return_value = mock_resp
     
     mock_employer_repo.get_contact_request.return_value = None
-    mock_employer_repo.get_by_id.return_value = MagicMock(company="Test Co")
+    mock_employer_repo.get_by_id.return_value = MagicMock(
+        id=uuid4(),
+        telegram_id=123,
+        company="Test Co"
+    )
     mock_employer_repo.create_contact_request.return_value = MagicMock(id=uuid4(), granted=True)
 
     payload = schemas.ContactsRequestCreate(candidate_id=uuid4())
