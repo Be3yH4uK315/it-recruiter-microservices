@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     DLQ_EXCHANGE_NAME: str
 
     model_config = SettingsConfigDict(
-        env_file="./../.env",
+        env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore"
     )
