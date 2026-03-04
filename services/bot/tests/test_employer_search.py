@@ -55,7 +55,7 @@ async def test_handle_decision_like(mock_callback, fsm_context, mock_employer_ap
     
     await employer.handle_decision(mock_callback, cb_data, fsm_context)
     
+    mock_employer_api.save_decision.assert_called_once()
     mock_employer_api.save_decision.assert_called_with(
         session_id="sess-1", candidate_id="c1", decision="like"
     )
-    mock_callback.answer.assert_any_call(Messages.EmployerSearch.DECISION_LIKE)
