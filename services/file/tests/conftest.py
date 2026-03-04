@@ -40,7 +40,7 @@ def mock_s3_service():
 def file_service(mock_db_session, mock_file_repo, mock_s3_service):
     """Сервис с внедренными моками."""
     with pytest.MonkeyPatch().context() as m:
-        m.setattr("app.services.file_service.s3_service", mock_s3_service)
+        m.setattr("app.services.file.s3_service", mock_s3_service)
         service = FileService(mock_db_session)
         service.repo = mock_file_repo
         yield service
