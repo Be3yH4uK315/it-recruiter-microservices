@@ -90,7 +90,7 @@ jobs:
           ALGORITHM: HS256
         run: |
           cd services/auth
-          pytest tests/ --cov=app --cov-report=xml -v
+          python -m pytest tests/ --cov=app --cov-report=xml -v
 
   test-bot:
     needs: [ detect-changes, lint ]
@@ -115,7 +115,7 @@ jobs:
           AUTH_SERVICE_URL: http://localhost:8003
         run: |
           cd services/bot
-          pytest tests/ --cov=app --cov-report=xml -v
+          python -m pytest tests/ --cov=app --cov-report=xml -v
 
   test-candidate:
     needs: [ detect-changes, lint ]
@@ -150,7 +150,7 @@ jobs:
           SECRET_KEY: test_secret_key
         run: |
           cd services/candidate
-          pytest tests/ --cov=app --cov-report=xml -v
+          python -m pytest tests/ --cov=app --cov-report=xml -v
 
   test-employer:
     needs: [ detect-changes, lint ]
@@ -185,7 +185,7 @@ jobs:
           SECRET_KEY: test_secret_key
         run: |
           cd services/employer
-          pytest tests/ --cov=app --cov-report=xml -v
+          python -m pytest tests/ --cov=app --cov-report=xml -v
 
   test-file:
     needs: [ detect-changes, lint ]
@@ -220,7 +220,7 @@ jobs:
           SECRET_KEY: test_secret_key
         run: |
           cd services/file
-          pytest tests/ --cov=app --cov-report=xml -v
+          python -m pytest tests/ --cov=app --cov-report=xml -v
 
   test-search:
     needs: [ detect-changes, lint ]
@@ -243,7 +243,7 @@ jobs:
           SECRET_KEY: test_secret_key
         run: |
           cd services/search
-          pytest tests/ --cov=app --cov-report=xml -v || true
+          python -m pytest tests/ --cov=app --cov-report=xml -v || true
 
   build-docker-images:
     needs: [ detect-changes, lint, test-auth, test-bot, test-candidate, test-employer, test-file, test-search ]
