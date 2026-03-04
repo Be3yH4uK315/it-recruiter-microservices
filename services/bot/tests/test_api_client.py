@@ -11,8 +11,6 @@ async def test_get_candidate_success(mocker):
     client = CandidateAPIClient()
     url = f"{settings.CANDIDATE_SERVICE_URL}/candidates/by-telegram/123"
     
-    mocker.patch("app.services.api_client.auth_manager.get_token", new_callable=AsyncMock, return_value="token")
-    
     async with respx.mock(base_url=None) as respx_mock:
         respx_mock.get(url).mock(return_value=Response(200, json={"id": "1"}))
         
@@ -24,8 +22,6 @@ async def test_get_candidate_404(mocker):
     client = CandidateAPIClient()
     url = f"{settings.CANDIDATE_SERVICE_URL}/candidates/by-telegram/123"
     
-    mocker.patch("app.services.api_client.auth_manager.get_token", new_callable=AsyncMock, return_value="token")
-    
     async with respx.mock(base_url=None) as respx_mock:
         respx_mock.get(url).mock(return_value=Response(404))
         
@@ -36,8 +32,6 @@ async def test_get_candidate_404(mocker):
 async def test_register_candidate_retry(mocker):
     client = CandidateAPIClient()
     url = f"{settings.CANDIDATE_SERVICE_URL}/candidates/"
-    
-    mocker.patch("app.services.api_client.auth_manager.get_token", new_callable=AsyncMock, return_value="token")
     
     fake_request = httpx.Request("POST", url)
     
