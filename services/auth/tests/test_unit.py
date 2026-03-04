@@ -25,9 +25,9 @@ def test_verify_telegram_data_valid():
         "auth_date": int(time.time()),
         "username": "testuser"
     }
-    data["hash"] = generate_valid_telegram_hash(data, settings.BOT_TOKEN)
+    data["hash"] = generate_valid_telegram_hash(data, settings.TELEGRAM_BOT_TOKEN)
     
-    assert verify_telegram_data(data, settings.BOT_TOKEN) is True
+    assert verify_telegram_data(data, settings.TELEGRAM_BOT_TOKEN) is True
 
 def test_verify_telegram_data_expired():
     """Тест: данные просрочены (более 24 часов)."""
@@ -36,7 +36,7 @@ def test_verify_telegram_data_expired():
         "auth_date": int(time.time()) - 87000,
         "hash": "fake"
     }
-    assert verify_telegram_data(data, settings.BOT_TOKEN) is False
+    assert verify_telegram_data(data, settings.TELEGRAM_BOT_TOKEN) is False
 
 def test_verify_telegram_data_fake_hash():
     """Тест: поддельный хеш."""
@@ -45,7 +45,7 @@ def test_verify_telegram_data_fake_hash():
         "auth_date": int(time.time()),
         "hash": "invalid_hash_value"
     }
-    assert verify_telegram_data(data, settings.BOT_TOKEN) is False
+    assert verify_telegram_data(data, settings.TELEGRAM_BOT_TOKEN) is False
 
 def test_jwt_generation_and_decoding():
     """Тест создания и чтения JWT."""
