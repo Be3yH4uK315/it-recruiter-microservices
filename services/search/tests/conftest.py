@@ -57,7 +57,7 @@ def override_dependencies(mock_es_client, mock_milvus, mock_ml_resources, mocker
     mocker.patch("app.services.search_logic.milvus_client", mock_milvus)
     mocker.patch("app.services.indexer.milvus_client", mock_milvus)
     
-    mocker.patch("app.core.resources_search.resources", mock_ml_resources)
+    mocker.patch("app.core.resources.resources", mock_ml_resources)
     mocker.patch("app.services.search_logic.resources", mock_ml_resources)
     mocker.patch("app.services.ranker.resources", mock_ml_resources)
     mocker.patch("app.services.indexer.resources", mock_ml_resources)

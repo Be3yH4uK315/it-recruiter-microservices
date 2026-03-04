@@ -6,9 +6,9 @@ from app.core.resources import ResourceManager
 async def test_resources_lifecycle(mocker):
     """Тест startup/shutdown."""
     res = ResourceManager()
-    mocker.patch("app.core.resources_search.SentenceTransformer")
-    mocker.patch("app.core.resources_search.CrossEncoder")
-    mock_client_cls = mocker.patch("app.core.resources_search.httpx.AsyncClient")
+    mocker.patch("app.core.resources.SentenceTransformer")
+    mocker.patch("app.core.resources.CrossEncoder")
+    mock_client_cls = mocker.patch("app.core.resources.httpx.AsyncClient")
     mock_client_instance = AsyncMock()
     mock_client_cls.return_value = mock_client_instance
     await res.startup()

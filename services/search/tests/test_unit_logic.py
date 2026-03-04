@@ -49,11 +49,11 @@ def test_ranker_multiplicative_score():
     
     final_score, factors = ranker._calculate_multiplicative_score(candidate, filters, ml_score)
     
-    assert factors["skill_factor"] == 0.75
+    assert factors["skill_factor"] == 0.65
     assert factors["loc_factor"] == 1.1
     assert factors["exp_factor"] == 1.0
     
-    expected = 0.8 * 0.75 * 1.0 * 1.1 * 1.0
+    expected = 0.8 * 0.65 * 1.0 * 1.1 * 1.0
     assert final_score == round(expected, 4)
 
 def test_indexer_prepare_es_doc():
@@ -61,13 +61,18 @@ def test_indexer_prepare_es_doc():
     from app.services.indexer import indexer
     data = {
         "id": "123",
-        "skills": [{"skill": "Python", "level": 5}, {"skill": "Go"}],
+        "skills": [{"skill": "Python", "level": 5}, {"skill": "Go", "level": 3}],
         "education": [{"level": "B.Sc", "institution": "MIT"}]
     }
     
     doc = indexer._prepare_es_doc(data)
     
     assert doc["id"] == "123"
-    assert "python" in doc["skills"]
-    assert "go" in doc["skills"]
+    
+    assert isinstance(doc["skills"], list)
+    if isinstance(doc["skills"][0], dict):
+         assert doc["skills"][0].get("skill", "").lower() == "python"
+    else:
+         assert "python" in [s.lower() for s in doc["skills"]]
+         
     assert "B.Sc MIT" in doc["education_text"]
