@@ -85,7 +85,7 @@ jobs:
       - name: Run tests with coverage
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/test_auth
-          ENVIRONMENT: test
+          ENVIRONMENT: local
           LOG_LEVEL: INFO
           SECRET_KEY: test_secret_key
           TELEGRAM_BOT_TOKEN: 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
@@ -114,7 +114,7 @@ jobs:
         
       - name: Run tests with coverage
         env:
-          ENVIRONMENT: test
+          ENVIRONMENT: local
           LOG_LEVEL: INFO
           TELEGRAM_BOT_TOKEN: 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
           ADMIN_IDS: "123,456"
@@ -159,7 +159,7 @@ jobs:
       - name: Run tests with coverage
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/test_candidate
-          ENVIRONMENT: test
+          ENVIRONMENT: local
           LOG_LEVEL: INFO
           SECRET_KEY: test_secret_key
           ALGORITHM: HS256
@@ -207,7 +207,7 @@ jobs:
       - name: Run tests with coverage
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/test_employer
-          ENVIRONMENT: test
+          ENVIRONMENT: local
           LOG_LEVEL: INFO
           SECRET_KEY: test_secret_key
           ALGORITHM: HS256
@@ -249,7 +249,7 @@ jobs:
       - name: Run tests with coverage
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/test_file
-          ENVIRONMENT: test
+          ENVIRONMENT: local
           LOG_LEVEL: INFO
           SECRET_KEY: test_secret_key
           ALGORITHM: HS256
@@ -281,7 +281,7 @@ jobs:
         
       - name: Run tests with coverage
         env:
-          ENVIRONMENT: test
+          ENVIRONMENT: local
           LOG_LEVEL: INFO
           SECRET_KEY: test_secret_key
           ALGORITHM: HS256
