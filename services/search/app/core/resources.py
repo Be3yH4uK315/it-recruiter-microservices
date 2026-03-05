@@ -1,3 +1,5 @@
+import asyncio
+from typing import Union, List
 import httpx
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from functools import lru_cache
@@ -11,6 +13,7 @@ class ResourceManager:
         self.http_client: httpx.AsyncClient = None
         self.embedding_model: SentenceTransformer = None
         self.ranker_model: CrossEncoder = None
+        self.ml_semaphore: asyncio.Semaphore = None
 
     async def startup(self):
         logger.info("Initializing Resources...")
@@ -18,6 +21,8 @@ class ResourceManager:
             timeout=httpx.Timeout(10.0, connect=5.0),
             limits=httpx.Limits(max_keepalive_connections=20, max_connections=100)
         )
+        
+        self.ml_semaphore = asyncio.Semaphore(1)
         
         logger.info(f"Loading Embedding Model: {settings.SENTENCE_MODEL_NAME}")
         self.embedding_model = SentenceTransformer(settings.SENTENCE_MODEL_NAME)
@@ -37,5 +42,19 @@ class ResourceManager:
     @lru_cache(maxsize=1024)
     def get_embedding_cached(self, text: str):
         return self.embedding_model.encode(text)
+
+    async def encode_text_async(self, text: Union[str, List[str]]):
+        """Безопасная асинхронная обертка для энкодера"""
+        loop = asyncio.get_running_loop()
+        async with self.ml_semaphore:
+            if isinstance(text, str):
+                return await loop.run_in_executor(None, self.get_embedding_cached, text)
+            return await loop.run_in_executor(None, self.embedding_model.encode, text)
+
+    async def predict_ranker_async(self, pairs: List[List[str]]):
+        """Безопасная асинхронная обертка для реранкера"""
+        loop = asyncio.get_running_loop()
+        async with self.ml_semaphore:
+            return await loop.run_in_executor(None, self.ranker_model.predict, pairs)
 
 resources = ResourceManager()

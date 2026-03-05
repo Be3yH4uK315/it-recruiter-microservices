@@ -1,4 +1,3 @@
-import asyncio
 import time
 from typing import Dict, Any, Optional
 import httpx
@@ -56,13 +55,7 @@ class IndexerService:
                 logger.error("Failed to write to shadow index", error=str(e))
 
         text_for_embedding = self._prepare_text_for_embedding(candidate_data)
-        loop = asyncio.get_running_loop()
-        
-        vector = await loop.run_in_executor(
-            None, 
-            resources.embedding_model.encode, 
-            text_for_embedding
-        )
+        vector = await resources.encode_text_async(text_for_embedding)
         
         await milvus_client.insert(ids=[candidate_id], vectors=[vector.tolist()])
         logger.info("Candidate indexed", candidate_id=candidate_id)
@@ -134,12 +127,7 @@ class IndexerService:
                         ids_for_milvus.append(cand["id"])
 
                     if texts_for_ml:
-                        loop = asyncio.get_running_loop()
-                        vectors = await loop.run_in_executor(
-                            None, 
-                            resources.embedding_model.encode, 
-                            texts_for_ml
-                        )
+                        vectors = await resources.encode_text_async(texts_for_ml)
                         await milvus_client.insert(ids=ids_for_milvus, vectors=vectors.tolist())
 
                     total_processed += len(candidates)

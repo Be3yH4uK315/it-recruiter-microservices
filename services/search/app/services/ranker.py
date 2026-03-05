@@ -1,4 +1,3 @@
-import asyncio
 from typing import List, Dict, Any, Tuple
 import numpy as np
 import structlog
@@ -23,13 +22,8 @@ class RankerService:
         for cand in candidates:
             pairs.append([query_text, self._construct_candidate_text(cand)])
 
-        loop = asyncio.get_running_loop()
         try:
-            raw_scores = await loop.run_in_executor(
-                None, 
-                resources.ranker_model.predict, 
-                pairs
-            )
+            raw_scores = await resources.predict_ranker_async(pairs)
             ml_scores = 1 / (1 + np.exp(-raw_scores))
         except Exception as e:
             logger.error(f"Ranker inference failed: {e}")
@@ -55,38 +49,57 @@ class RankerService:
     ) -> Tuple[float, Dict]:
         """
         Multiplicative Scoring Model:
-        Score = ML_Prob * SkillFactor * ExpFactor * LocFactor
+        Score = ML_Prob * SkillFactor * ExpFactor * LocFactor * SalFactor * EngFactor
         """
         factors = {"ml_score": round(ml_score, 4)}
         
         skill_factor = 1.0
+        
+        cand_skills_dict = {}
+        for s in candidate.get("skills", []):
+            if isinstance(s, dict) and "skill" in s and "level" in s:
+                cand_skills_dict[s["skill"].lower()] = float(s["level"])
+
         if filters.must_skills:
-            cand_skills_dict = {}
-            for s in candidate.get("skills", []):
-                if isinstance(s, dict):
-                    lvl = s.get("level") or 3
-                    cand_skills_dict[s.get("skill", "").lower()] = lvl
-                else:
-                    cand_skills_dict[str(s).lower()] = 3
-            
             required = set(filters.must_skills)
-            if required:
-                matched_score = 0.0
-                for req in required:
-                    if req in cand_skills_dict:
-                        level = cand_skills_dict[req]
-                        matched_score += (level / 5.0)
-                
-                ratio = matched_score / len(required)
-                skill_factor = settings.FACTOR_NO_SKILLS + ((1.0 - settings.FACTOR_NO_SKILLS) * ratio)
+            matched_score = 0.0
+            
+            for req in required:
+                if req in cand_skills_dict:
+                    level = cand_skills_dict[req]
+                    
+                    if level >= 3:
+                        item_score = 1.0 + (level - 3) * 0.1
+                    else:
+                        item_score = 1.0 - (3 - level) * 0.2
+                        
+                    matched_score += item_score
+            
+            avg_match = matched_score / len(required)
+            
+            skill_factor = settings.FACTOR_NO_SKILLS + ((1.0 - settings.FACTOR_NO_SKILLS) * avg_match)
+
+        if filters.nice_skills:
+            nice_bonus = 0.0
+            for nice in set(filters.nice_skills):
+                if nice in cand_skills_dict:
+                    level = cand_skills_dict[nice]
+                    nice_bonus += (level / 5.0) * 0.1 
+            
+            skill_factor = min(1.5, skill_factor + nice_bonus)
+
         factors["skill_factor"] = round(skill_factor, 2)
 
         exp_factor = 1.0
-        if filters.experience_min is not None:
-            cand_exp = candidate.get("experience_years", 0)
-            if cand_exp < filters.experience_min:
-                diff = filters.experience_min - cand_exp
-                exp_factor = max(0.5, 1.0 - (diff * 0.15))
+        cand_exp = candidate.get("experience_years", 0)
+        
+        if filters.experience_min is not None and cand_exp < filters.experience_min:
+            diff = filters.experience_min - cand_exp
+            exp_factor = max(0.5, 1.0 - (diff * 0.15))
+        elif filters.experience_max is not None and cand_exp > filters.experience_max:
+            diff = cand_exp - filters.experience_max
+            exp_factor = max(0.8, 1.0 - (diff * 0.05))
+            
         factors["exp_factor"] = round(exp_factor, 2)
         
         loc_factor = 1.0
@@ -111,12 +124,12 @@ class RankerService:
             cand_lvl = levels.get(cand_lvl_str.upper() if cand_lvl_str else "", 0)
             
             if cand_lvl == 0:
-                eng_factor = 0.7
+                eng_factor = 0.8
             elif cand_lvl < req_lvl:
                 diff = req_lvl - cand_lvl
                 eng_factor = max(0.5, 1.0 - (diff * 0.15))
             elif cand_lvl > req_lvl:
-                eng_factor = 1.1
+                eng_factor = 1.05
         factors["eng_factor"] = round(eng_factor, 2)
 
         final_score = ml_score * skill_factor * exp_factor * loc_factor * sal_factor * eng_factor

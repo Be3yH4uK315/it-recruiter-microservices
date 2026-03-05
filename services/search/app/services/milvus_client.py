@@ -76,11 +76,14 @@ class MilvusClientWrapper:
 
     async def search(self, query_vector: List[float], exclude_ids: List[str], top_k: int = 50) -> List[dict]:
         loop = asyncio.get_running_loop()
+        
+        safe_ids = exclude_ids[:1000]
         expr = ""
-        if exclude_ids:
-            safe_ids = exclude_ids[:100]
+        if safe_ids:
             ids_list_str = ", ".join(f'"{str(uid)}"' for uid in safe_ids)
             expr = f'candidate_id not in [{ids_list_str}]'
+        
+        fetch_limit = top_k + len(exclude_ids)
         
         def _sync_search():
             search_params = {"metric_type": "IP", "params": {"nprobe": 10}}
@@ -88,14 +91,19 @@ class MilvusClientWrapper:
                 data=[query_vector],
                 anns_field="embedding",
                 param=search_params,
-                limit=top_k,
+                limit=fetch_limit,
                 expr=expr if expr else None,
                 output_fields=["candidate_id"]
             )
             hits = []
+            exclude_set = set(str(uid) for uid in exclude_ids)
+            
             if results and len(results) > 0:
                 for hit in results[0]:
-                    hits.append({"candidate_id": hit.id, "vector_score": hit.distance})
+                    if str(hit.id) not in exclude_set:
+                        hits.append({"candidate_id": hit.id, "vector_score": hit.distance})
+                        if len(hits) >= top_k:
+                            break
             return hits
 
         try:

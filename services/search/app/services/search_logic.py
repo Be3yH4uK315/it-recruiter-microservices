@@ -46,7 +46,6 @@ class SearchEngine:
         )
         
         top_ids = sorted_candidates_ids[:settings.RERANK_TOP_K]
-        
         candidates_data = await self._mget_es(top_ids)
         
         if not candidates_data:
@@ -81,13 +80,7 @@ class SearchEngine:
             
         try:
             query_text = self._build_query_text(filters)
-            loop = asyncio.get_running_loop()
-            
-            query_vector = await loop.run_in_executor(
-                None, 
-                resources.get_embedding_cached, 
-                query_text
-            )
+            query_vector = await resources.encode_text_async(query_text)
             
             hits = await milvus_client.search(
                 query_vector=query_vector.tolist(),
@@ -151,23 +144,39 @@ class SearchEngine:
         if filters.exclude_ids:
             must_not.append({"ids": {"values": [str(uid) for uid in filters.exclude_ids]}})
         
-        if filters.location: 
-            must.append({"match": {"location": {"query": filters.location, "fuzziness": "AUTO"}}})
-        
-        if filters.work_modes: 
+        if filters.location:
+            location_should = [
+                {"match": {"location": {"query": filters.location, "boost": 3}}},
+                {"term": {"work_modes": "remote"}}
+            ]
+            must.append({"bool": {"should": location_should, "minimum_should_match": 1}})
+
+        if filters.work_modes:
             must.append({"terms": {"work_modes": filters.work_modes}})
+
+        exp_range = {}
+        if filters.experience_min is not None:
+            exp_range["gte"] = max(0, filters.experience_min - 1)
+        if filters.experience_max is not None:
+            exp_range["lte"] = filters.experience_max + 2
+            
+        if exp_range:
+            must.append({"range": {"experience_years": exp_range}})
 
         if filters.role: 
             should.append({"match": {"headline_role": {"query": filters.role, "boost": 5}}})
             
         for skill in filters.must_skills: 
-            should.append({"match": {"skills": {"query": skill, "boost": 4}}})
+            should.append({"match": {"skills.skill": {"query": skill, "boost": 4}}})
+        
+        for skill in (filters.nice_skills or []):
+            should.append({"match": {"skills.skill": {"query": skill, "boost": 2}}})
             
         if filters.salary_max:
              must.append({"range": {"salary_min": {"lte": filters.salary_max}}})
             
         if filters.english_level:
-            should.append({"term": {"english_level": {"value": filters.english_level, "boost": 2}}})
+            should.append({"term": {"english_level": {"value": filters.english_level, "boost": 1}}})
 
         bool_query = {
             "bool": {
