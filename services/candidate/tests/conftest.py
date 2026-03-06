@@ -1,9 +1,11 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from app.services.candidate import CandidateService
+
+import pytest
 from app.repositories.candidate import CandidateRepository
 from app.repositories.outbox import OutboxRepository
+from app.services.candidate import CandidateService
 from sqlalchemy.ext.asyncio import AsyncSession
+
 
 @pytest.fixture
 def mock_db_session():
@@ -16,10 +18,12 @@ def mock_db_session():
     session.expunge = MagicMock()
     return session
 
+
 @pytest.fixture
 def mock_candidate_repo():
     """Фейковый репозиторий кандидатов."""
     return AsyncMock(spec=CandidateRepository)
+
 
 @pytest.fixture
 def mock_outbox_repo():
@@ -27,6 +31,7 @@ def mock_outbox_repo():
     repo = MagicMock(spec=OutboxRepository)
     repo.create = MagicMock()
     return repo
+
 
 @pytest.fixture
 def candidate_service(mock_db_session, mock_candidate_repo, mock_outbox_repo):
@@ -36,6 +41,6 @@ def candidate_service(mock_db_session, mock_candidate_repo, mock_outbox_repo):
     service = CandidateService(mock_db_session)
     service.repo = mock_candidate_repo
     service.outbox = mock_outbox_repo
-    service._check_employer_access = AsyncMock(return_value=True) 
-    
+    service._check_employer_access = AsyncMock(return_value=True)
+
     return service

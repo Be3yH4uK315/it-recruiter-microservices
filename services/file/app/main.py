@@ -1,20 +1,22 @@
-from fastapi import FastAPI, HTTPException, status, Depends
-from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
-from prometheus_fastapi_instrumentator import Instrumentator
+
 import structlog
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.exceptions import RequestValidationError
+from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import text
 
 from app.api.v1 import files
-from app.core.telemetry import setup_telemetry
-from app.services.s3_client import s3_service
-from app.core.logger import setup_logging
 from app.core.db import get_db
 from app.core.exceptions import global_exception_handler
+from app.core.logger import setup_logging
+from app.core.telemetry import setup_telemetry
+from app.services.s3_client import s3_service
 
 setup_logging()
 logger = structlog.get_logger()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -70,9 +72,7 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         has_error = True
 
     if has_error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=health_status
-        )
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=health_status)
 
     return health_status
 

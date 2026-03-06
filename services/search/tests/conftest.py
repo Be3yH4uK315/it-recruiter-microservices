@@ -1,12 +1,13 @@
+from unittest.mock import AsyncMock, MagicMock
+
+import numpy as np
 import pytest
 import pytest_asyncio
-import numpy as np
-from unittest.mock import AsyncMock, MagicMock
-from httpx import AsyncClient, ASGITransport
-
+from app.core.resources import ResourceManager
 from app.main import app
 from app.services.milvus_client import MilvusClientWrapper
-from app.core.resources import ResourceManager
+from httpx import ASGITransport, AsyncClient
+
 
 @pytest.fixture
 def mock_es_client():
@@ -21,6 +22,7 @@ def mock_es_client():
     es.indices.get_alias = AsyncMock(return_value={})
     return es
 
+
 @pytest.fixture
 def mock_milvus():
     """Мок для Milvus."""
@@ -29,6 +31,7 @@ def mock_milvus():
     milvus.insert = AsyncMock()
     milvus.delete = AsyncMock()
     return milvus
+
 
 @pytest.fixture
 def mock_ml_resources(mocker):
@@ -41,11 +44,12 @@ def mock_ml_resources(mocker):
     mock_embed.encode.return_value = np.array([0.1] * 768, dtype=np.float32)
     mock_res.embedding_model = mock_embed
     mock_ranker = MagicMock()
-    mock_ranker.predict.return_value = np.array([2.5, -1.0]) 
+    mock_ranker.predict.return_value = np.array([2.5, -1.0])
     mock_res.ranker_model = mock_ranker
     mock_res.get_embedding_cached = MagicMock(return_value=np.array([0.1] * 768))
-    
+
     return mock_res
+
 
 @pytest.fixture(autouse=True)
 def override_dependencies(mock_es_client, mock_milvus, mock_ml_resources, mocker):
@@ -56,11 +60,12 @@ def override_dependencies(mock_es_client, mock_milvus, mock_ml_resources, mocker
     mocker.patch("app.services.milvus_client.milvus_client", mock_milvus)
     mocker.patch("app.services.search_logic.milvus_client", mock_milvus)
     mocker.patch("app.services.indexer.milvus_client", mock_milvus)
-    
+
     mocker.patch("app.core.resources.resources", mock_ml_resources)
     mocker.patch("app.services.search_logic.resources", mock_ml_resources)
     mocker.patch("app.services.ranker.resources", mock_ml_resources)
     mocker.patch("app.services.indexer.resources", mock_ml_resources)
+
 
 @pytest_asyncio.fixture(scope="function")
 async def async_client():

@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 5
 
+
 class OutboxWorker:
     def __init__(self, interval_seconds: int = 2):
         self.interval = interval_seconds
@@ -35,7 +36,7 @@ class OutboxWorker:
         async with AsyncSessionLocal() as db:
             repo = OutboxRepository(db)
             messages = await repo.get_pending_with_lock(limit=50)
-            
+
             if not messages:
                 return 0
 
@@ -46,35 +47,34 @@ class OutboxWorker:
                 return 0
 
             processed_count = 0
-            
+
             for msg in messages:
                 body_bytes = json.dumps(msg.message_body).encode()
-                
+
                 try:
                     await publisher.publish_message(
-                        routing_key=msg.routing_key,
-                        message_body=body_bytes
+                        routing_key=msg.routing_key, message_body=body_bytes
                     )
                     await repo.mark_as_sent(msg.id)
                     processed_count += 1
                 except Exception as e:
                     logger.error(f"Failed to publish message {msg.id}: {e}")
-                    
+
                     msg.retry_count += 1
                     msg.error_log = str(e)[:500]
-                    
+
                     if msg.retry_count >= MAX_RETRIES:
                         logger.error(f"Message {msg.id} failed max retries. Moving to DLQ.")
                         try:
                             await publisher.publish_dlq(
                                 routing_key=msg.routing_key,
                                 message_body=body_bytes,
-                                error_info=str(e)
+                                error_info=str(e),
                             )
                             msg.status = "failed"
                         except Exception as dlq_error:
                             logger.critical(f"Failed to move to DLQ! Data danger! {dlq_error}")
-            
+
             await db.commit()
             return processed_count
 
@@ -91,5 +91,6 @@ class OutboxWorker:
             except asyncio.CancelledError:
                 pass
         logger.info("Outbox worker stopped.")
+
 
 outbox_worker = OutboxWorker()

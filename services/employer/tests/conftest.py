@@ -1,12 +1,13 @@
+from unittest.mock import AsyncMock, MagicMock
+
+import httpx
 import pytest
 import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock
+from app.core.resources import resources
+from app.repositories.employer import EmployerRepository
+from app.services.employer import EmployerService
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.employer import EmployerService
-from app.repositories.employer import EmployerRepository
-from app.core.resources import resources
-import httpx
 
 @pytest.fixture
 def mock_db_session():
@@ -17,6 +18,7 @@ def mock_db_session():
     session.refresh = AsyncMock()
     session.rollback = AsyncMock()
     return session
+
 
 @pytest.fixture
 def mock_employer_repo():
@@ -32,12 +34,14 @@ def mock_employer_repo():
     repo.create_decision = AsyncMock()
     return repo
 
+
 @pytest.fixture
 def employer_service(mock_db_session, mock_employer_repo):
     """Сервис с моками внутри."""
     service = EmployerService(mock_db_session)
     service.repo = mock_employer_repo
     return service
+
 
 @pytest_asyncio.fixture
 async def setup_resources():

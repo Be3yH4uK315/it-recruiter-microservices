@@ -1,12 +1,14 @@
 import json
+
+import structlog
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
-import structlog
 
 from app.core.db import AsyncSessionLocal
 from app.models.candidate import IdempotencyKey
 
 logger = structlog.get_logger()
+
 
 class IdempotencyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -63,7 +65,9 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
                         logger.info("idempotency_key_already_exists", key=key)
             except json.JSONDecodeError:
                 logger.warning(
-                    "idempotency_json_decode_error", key=key, response_length=len(response_body)
+                    "idempotency_json_decode_error",
+                    key=key,
+                    response_length=len(response_body),
                 )
             except Exception as e:
                 logger.error(

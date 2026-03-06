@@ -1,16 +1,17 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import BinaryIO
+
 import aioboto3
 from botocore.exceptions import ClientError
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
-from datetime import datetime
-import asyncio
 
 from app.core.config import settings
 
@@ -77,9 +78,7 @@ class S3Service:
         wait=wait_exponential(multiplier=1, min=1, max=10),
         retry=retry_if_exception_type((ClientError, ConnectionError)),
     )
-    async def upload_fileobj(
-        self, file_obj: BinaryIO, object_key: str, content_type: str
-    ):
+    async def upload_fileobj(self, file_obj: BinaryIO, object_key: str, content_type: str):
         """Обновить файл с retry логикой и metrics."""
         start_time = datetime.utcnow()
         file_size = 0
@@ -110,11 +109,9 @@ class S3Service:
                     "file_size_bytes": file_size,
                     "file_size_mb": round(file_size / (1024 * 1024), 2),
                     "duration_seconds": round(duration, 2),
-                    "speed_mbps": round(
-                        (file_size / (1024 * 1024)) / duration, 2
-                    )
-                    if duration > 0
-                    else 0,
+                    "speed_mbps": (
+                        round((file_size / (1024 * 1024)) / duration, 2) if duration > 0 else 0
+                    ),
                     "total_uploads": self.upload_count,
                     "total_bytes_mb": round(self.upload_bytes / (1024 * 1024), 2),
                 },
@@ -157,9 +154,7 @@ class S3Service:
             logger.error(f"Failed to delete file {object_key}: {e}")
             raise
 
-    async def generate_presigned_url(
-        self, object_key: str, expiration: int = 3600
-    ) -> str:
+    async def generate_presigned_url(self, object_key: str, expiration: int = 3600) -> str:
         """Сгенерировать presigned URL с логированием."""
         try:
             async with self.get_client() as client:
@@ -171,9 +166,7 @@ class S3Service:
 
                 if settings.S3_PUBLIC_DOMAIN:
                     if settings.S3_ENDPOINT_URL in url:
-                        url = url.replace(
-                            settings.S3_ENDPOINT_URL, settings.S3_PUBLIC_DOMAIN
-                        )
+                        url = url.replace(settings.S3_ENDPOINT_URL, settings.S3_PUBLIC_DOMAIN)
 
                 logger.info(
                     "presigned_url_generated",
@@ -193,9 +186,7 @@ class S3Service:
             )
             return ""
 
-    async def batch_upload(
-        self, files: list[tuple], max_concurrent: int = 5
-    ) -> tuple[int, int]:
+    async def batch_upload(self, files: list[tuple], max_concurrent: int = 5) -> tuple[int, int]:
         """Пакетная загрузка с контролем concurrency и расширенным логированием."""
         logger.info("batch_upload_started", extra={"file_count": len(files)})
 
@@ -229,9 +220,7 @@ class S3Service:
                 "total": len(files),
                 "successful": successful,
                 "failed": failed,
-                "success_rate": round((successful / len(files) * 100), 2)
-                if files
-                else 0,
+                "success_rate": (round((successful / len(files) * 100), 2) if files else 0),
             },
         )
 
@@ -245,11 +234,11 @@ class S3Service:
             "upload_errors": self.upload_errors,
             "delete_count": self.delete_count,
             "delete_errors": self.delete_errors,
-            "error_rate": round(
-                (self.upload_errors / self.upload_count * 100), 2
-            )
-            if self.upload_count > 0
-            else 0,
+            "error_rate": (
+                round((self.upload_errors / self.upload_count * 100), 2)
+                if self.upload_count > 0
+                else 0
+            ),
         }
 
 

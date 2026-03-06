@@ -1,7 +1,9 @@
-from locust import HttpUser, task, between
 import random
 
+from locust import HttpUser, between, task
+
 INTERNAL_BOT_SECRET = "super-secret-bot-password-change-me"
+
 
 class AuthUser(HttpUser):
     wait_time = between(1, 2)
@@ -16,14 +18,10 @@ class AuthUser(HttpUser):
         payload = {
             "telegram_id": tg_id,
             "username": f"user_{tg_id}",
-            "bot_secret": INTERNAL_BOT_SECRET
+            "bot_secret": INTERNAL_BOT_SECRET,
         }
-        
-        self.client.post(
-            "/v1/auth/login/bot",
-            json=payload,
-            name="/auth/login/bot"
-        )
+
+        self.client.post("/v1/auth/login/bot", json=payload, name="/auth/login/bot")
 
     @task(1)
     def health(self):

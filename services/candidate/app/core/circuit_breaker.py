@@ -1,13 +1,17 @@
 import time
-from typing import Callable, Any
+from collections.abc import Callable
+from typing import Any
+
 import structlog
 
 from app.core.config import settings
 
 logger = structlog.get_logger()
 
+
 class CircuitBreakerOpenException(Exception):
     pass
+
 
 class SimpleCircuitBreaker:
     def __init__(self, failure_threshold: int, recovery_timeout: int):
@@ -35,12 +39,13 @@ class SimpleCircuitBreaker:
             if self.failure_count >= self.failure_threshold:
                 self.state = "OPEN"
                 logger.warning(
-                    f"Circuit Breaker OPENED after {self.failure_count} failures.", 
-                    threshold=self.failure_threshold
+                    f"Circuit Breaker OPENED after {self.failure_count} failures.",
+                    threshold=self.failure_threshold,
                 )
             raise e
 
+
 employer_service_breaker = SimpleCircuitBreaker(
     failure_threshold=settings.CIRCUIT_BREAKER_FAILURE_THRESHOLD,
-    recovery_timeout=settings.CIRCUIT_BREAKER_RECOVERY_TIMEOUT
+    recovery_timeout=settings.CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
 )

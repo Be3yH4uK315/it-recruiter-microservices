@@ -1,7 +1,8 @@
 import asyncio
 import logging
-from logging.handlers import RotatingFileHandler
 import os
+from logging.handlers import RotatingFileHandler
+
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.redis import RedisStorage
 from redis.asyncio import Redis
@@ -9,8 +10,8 @@ from redis.asyncio import Redis
 from app.core.config import settings
 from app.core.resources import resources
 from app.handlers import candidate, common, employer
-from app.middlewares.logging import LoggingMiddleware, CustomFormatter
 from app.middlewares.fsm_timeout import FSMTimeoutMiddleware
+from app.middlewares.logging import CustomFormatter, LoggingMiddleware
 
 
 def setup_logging() -> None:
@@ -23,14 +24,10 @@ def setup_logging() -> None:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
-    file_handler = RotatingFileHandler(
-        log_file, maxBytes=5 * 1024 * 1024, backupCount=5
-    )
+    file_handler = RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=5)
     file_handler.setLevel(log_level)
     file_handler.setFormatter(
-        CustomFormatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(user_id)s - %(message)s"
-        )
+        CustomFormatter("%(asctime)s - %(name)s - %(levelname)s - %(user_id)s - %(message)s")
     )
 
     logging.getLogger().addHandler(file_handler)

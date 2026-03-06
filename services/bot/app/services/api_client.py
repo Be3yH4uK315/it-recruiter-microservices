@@ -1,18 +1,19 @@
+import logging
 from datetime import date
+from typing import Any
 from uuid import UUID
+
 import httpx
 from tenacity import (
     retry,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception,
 )
-from typing import Dict, Any, Optional
-import logging
 
-from app.services.auth_manager import auth_manager
 from app.core.config import settings
 from app.core.resources import resources
+from app.services.auth_manager import auth_manager
 
 logger = logging.getLogger(__name__)
 
@@ -108,8 +109,10 @@ class BaseClient:
         self.timeout = httpx.Timeout(timeout, connect=5.0)
         self.default_headers = {"Content-Type": "application/json"}
 
-    async def _get_headers(self, user_telegram_id: Optional[int] = None) -> Dict[str, str]:
-        """Получить заголовки с токеном авторизации, если user_telegram_id предоставлен."""
+    async def _get_headers(self, user_telegram_id: int | None = None) -> dict[str, str]:
+        """
+        Получить заголовки с токеном авторизации, если user_telegram_id предоставлен.
+        """
         headers = self.default_headers.copy()
         if user_telegram_id:
             token = await auth_manager.get_token(user_telegram_id)
@@ -119,17 +122,13 @@ class BaseClient:
                 logger.warning(f"NO TOKEN for {user_telegram_id}")
         return headers
 
-    async def _request(
-        self, method: str, url: str, **kwargs
-    ) -> httpx.Response:
+    async def _request(self, method: str, url: str, **kwargs) -> httpx.Response:
         """Сделать HTTP-запрос с использованием общего HTTP-клиента."""
         if not resources.http_client:
             raise RuntimeError("HTTP client not initialized. Check startup sequence.")
 
         try:
-            response = await resources.http_client.request(
-                method, url, **kwargs
-            )
+            response = await resources.http_client.request(method, url, **kwargs)
             return response
         except httpx.TimeoutException as e:
             raise APINetworkError(f"Timeout: {str(e)}")
@@ -144,15 +143,13 @@ class BaseClient:
 
 class CandidateAPIClient(BaseClient):
     def __init__(self):
-        super().__init__(
-            f"{settings.CANDIDATE_SERVICE_URL}/candidates", timeout=15.0
-        )
+        super().__init__(f"{settings.CANDIDATE_SERVICE_URL}/candidates", timeout=15.0)
 
     @retry_api_call()
-    async def register_candidate_profile(
-        self, profile_data: dict
-    ) -> Dict[str, Any]:
-        """Создать профиль кандидата. Ожидается, что profile_data содержит 'telegram_id'."""
+    async def register_candidate_profile(self, profile_data: dict) -> dict[str, Any]:
+        """
+        Создать профиль кандидата. Ожидается, что profile_data содержит telegram_id.
+        """
         url = f"{self.base_url}/"
         payload = serialize_dates(profile_data.copy())
         tg_id = payload.get("telegram_id")
@@ -179,9 +176,7 @@ class CandidateAPIClient(BaseClient):
             )
 
     @retry_api_call()
-    async def get_candidate_by_telegram_id(
-        self, telegram_id: int
-    ) -> Dict[str, Any]:
+    async def get_candidate_by_telegram_id(self, telegram_id: int) -> dict[str, Any]:
         """Получить профиль кандидата по Telegram ID."""
         headers = await self._get_headers(telegram_id)
 
@@ -204,7 +199,7 @@ class CandidateAPIClient(BaseClient):
     @retry_api_call()
     async def update_candidate_profile(
         self, telegram_id: int, profile_data: dict
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Обновить профиль кандидата по Telegram ID."""
         url = f"{self.base_url}/by-telegram/{telegram_id}"
         payload = serialize_dates(profile_data.copy())
@@ -261,9 +256,7 @@ class CandidateAPIClient(BaseClient):
         headers = await self._get_headers(telegram_id)
 
         try:
-            response = await self._request(
-                "DELETE", url, headers=headers, timeout=self.timeout
-            )
+            response = await self._request("DELETE", url, headers=headers, timeout=self.timeout)
 
             if response.status_code == 404:
                 logger.info(f"Avatar not found for candidate {telegram_id}")
@@ -284,9 +277,7 @@ class CandidateAPIClient(BaseClient):
         headers = await self._get_headers(telegram_id)
 
         try:
-            response = await self._request(
-                "DELETE", url, headers=headers, timeout=self.timeout
-            )
+            response = await self._request("DELETE", url, headers=headers, timeout=self.timeout)
 
             if response.status_code == 404:
                 logger.info(f"Resume not found for candidate {telegram_id}")
@@ -308,14 +299,10 @@ class CandidateAPIClient(BaseClient):
 
 class EmployerAPIClient(BaseClient):
     def __init__(self):
-        super().__init__(
-            f"{settings.EMPLOYER_SERVICE_URL}/employers", timeout=20.0
-        )
+        super().__init__(f"{settings.EMPLOYER_SERVICE_URL}/employers", timeout=20.0)
 
     @retry_api_call()
-    async def get_or_create_employer(
-        self, telegram_id: int, username: str
-    ) -> Dict[str, Any]:
+    async def get_or_create_employer(self, telegram_id: int, username: str) -> dict[str, Any]:
         """Создать или получить профиль работодателя."""
         payload = {
             "telegram_id": telegram_id,
@@ -338,9 +325,7 @@ class EmployerAPIClient(BaseClient):
             raise APIHTTPError(e.response.status_code, e.response.text)
 
     @retry_api_call()
-    async def update_employer_profile(
-        self, employer_id: str, update_data: dict
-    ) -> Dict[str, Any]:
+    async def update_employer_profile(self, employer_id: str, update_data: dict) -> dict[str, Any]:
         """Обновить профиль работодателя."""
         url = f"{self.base_url}/{employer_id}"
 
@@ -359,9 +344,7 @@ class EmployerAPIClient(BaseClient):
             raise APIHTTPError(e.response.status_code, e.response.text)
 
     @retry_api_call()
-    async def create_search_session(
-        self, employer_id: str, filters: dict
-    ) -> Dict[str, Any]:
+    async def create_search_session(self, employer_id: str, filters: dict) -> dict[str, Any]:
         """Создать сессию поиска кандидатов с заданными фильтрами."""
         payload = {
             "title": f"Search for {filters.get('role', 'candidate')}",
@@ -384,7 +367,7 @@ class EmployerAPIClient(BaseClient):
             raise APIHTTPError(e.response.status_code, e.response.text)
 
     @retry_api_call()
-    async def get_next_candidate(self, session_id: str) -> Dict[str, Any]:
+    async def get_next_candidate(self, session_id: str) -> dict[str, Any]:
         """Получить следующего кандидата в сессии поиска."""
         url = f"{self.base_url}/searches/{session_id}/next"
 
@@ -406,9 +389,7 @@ class EmployerAPIClient(BaseClient):
             raise APIHTTPError(e.response.status_code, e.response.text)
 
     @retry_api_call()
-    async def save_decision(
-        self, session_id: str, candidate_id: str, decision: str
-    ) -> bool:
+    async def save_decision(self, session_id: str, candidate_id: str, decision: str) -> bool:
         """Сохранить решение по кандидату в сессии поиска."""
         url = f"{self.base_url}/searches/{session_id}/decisions"
         payload = {"candidate_id": candidate_id, "decision": decision}
@@ -428,9 +409,7 @@ class EmployerAPIClient(BaseClient):
             raise APIHTTPError(e.response.status_code, e.response.text)
 
     @retry_api_call()
-    async def request_contacts(
-        self, employer_id: str, candidate_id: str
-    ) -> Dict[str, Any]:
+    async def request_contacts(self, employer_id: str, candidate_id: str) -> dict[str, Any]:
         """Запросить контактные данные кандидата."""
         url = f"{self.base_url}/{employer_id}/contact-requests"
         payload = {"candidate_id": candidate_id}
@@ -450,9 +429,7 @@ class EmployerAPIClient(BaseClient):
             raise APIHTTPError(e.response.status_code, e.response.text)
 
     @retry_api_call()
-    async def respond_to_contact_request(
-        self, request_id: str, granted: bool
-    ) -> bool:
+    async def respond_to_contact_request(self, request_id: str, granted: bool) -> bool:
         """Ответить на запрос контактов от работодателя."""
         url = f"{self.base_url}/contact-requests/{request_id}"
 
@@ -471,9 +448,7 @@ class EmployerAPIClient(BaseClient):
             raise APIHTTPError(e.response.status_code, e.response.text)
 
     @retry_api_call()
-    async def get_contact_request_details(
-        self, request_id: str
-    ) -> Dict[str, Any]:
+    async def get_contact_request_details(self, request_id: str) -> dict[str, Any]:
         """Получить детали запроса контактов."""
         url = f"{self.base_url}/contact-requests/{request_id}/details"
 
@@ -507,8 +482,8 @@ class FileAPIClient(BaseClient):
         content_type: str,
         owner_id: int,
         file_type: str,
-    ) -> Dict[str, Any]:
-        """Загрузить файл и получить его ID. file_type может быть 'resume' или 'avatar'."""
+    ) -> dict[str, Any]:
+        """Загрузить файл и получить его ID. Тип может быть 'resume' или 'avatar'."""
         url = f"{self.base_url}/upload"
 
         data = {"owner_telegram_id": str(owner_id), "file_type": file_type}
@@ -596,9 +571,7 @@ class SearchAPIClient(BaseClient):
         url = f"{self.base_url}/index/rebuild"
 
         try:
-            response = await self._request(
-                "POST", url, headers=headers, timeout=self.timeout
-            )
+            response = await self._request("POST", url, headers=headers, timeout=self.timeout)
             response.raise_for_status()
             logger.info("Search index rebuild triggered")
             return True

@@ -1,4 +1,5 @@
 import asyncio
+
 import structlog
 
 from app.core.logger import setup_logging
@@ -7,6 +8,7 @@ from app.services.publisher import publisher
 
 setup_logging()
 logger = structlog.get_logger()
+
 
 async def main():
     logger.info("Starting Background Worker Process...")
@@ -17,7 +19,7 @@ async def main():
         return
 
     worker_task = asyncio.create_task(outbox_worker.run())
-    
+
     try:
         await worker_task
     except asyncio.CancelledError:
@@ -26,6 +28,7 @@ async def main():
         await outbox_worker.stop()
         await publisher.close()
         logger.info("Worker shutdown complete.")
+
 
 if __name__ == "__main__":
     try:
