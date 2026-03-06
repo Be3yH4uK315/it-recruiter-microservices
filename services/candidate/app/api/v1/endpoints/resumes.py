@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, status
-
+from app.api.v1 import dependencies
 from app.schemas import candidate as schemas
 from app.services.candidate import CandidateService
-from app.api.v1 import dependencies
+from fastapi import APIRouter, Depends, status
 
 router = APIRouter()
+
 
 @router.post(
     "/by-telegram/{telegram_id}/resume/upload-url",

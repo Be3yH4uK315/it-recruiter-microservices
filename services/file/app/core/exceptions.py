@@ -1,15 +1,18 @@
-from typing import Any, Optional
+from typing import Any
+
+import structlog
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-import structlog
 
 logger = structlog.get_logger()
+
 
 class ErrorResponse(BaseModel):
     code: str
     message: str
-    details: Optional[Any] = None
+    details: Any | None = None
+
 
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
@@ -24,20 +27,16 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         status_code = exc.status_code
         message = getattr(exc, "detail", str(exc))
         code = f"http_{status_code}"
-    
+
     logger.error(
         "request_failed",
         error=str(exc),
         status_code=status_code,
         url=str(request.url),
-        method=request.method
+        method=request.method,
     )
 
     return JSONResponse(
         status_code=status_code,
-        content=ErrorResponse(
-            code=code,
-            message=message,
-            details=details
-        ).model_dump(mode="json")
+        content=ErrorResponse(code=code, message=message, details=details).model_dump(mode="json"),
     )

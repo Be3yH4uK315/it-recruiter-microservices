@@ -1,19 +1,30 @@
-import uuid
-from sqlalchemy.orm import relationship
-from sqlalchemy import (
-    Column, String, Enum as SQLAlchemyEnum,
-    DateTime, func, ForeignKey, Text, Boolean,
-)
-from sqlalchemy.dialects.postgresql import UUID, BIGINT, JSONB
-from sqlalchemy.schema import UniqueConstraint
 import enum
+import uuid
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    func,
+)
+from sqlalchemy import (
+    Enum as SQLAlchemyEnum,
+)
+from sqlalchemy.dialects.postgresql import BIGINT, JSONB, UUID
+from sqlalchemy.orm import relationship
+from sqlalchemy.schema import UniqueConstraint
 
 from app.core.db import Base
+
 
 class DecisionType(str, enum.Enum):
     LIKE = "like"
     DISLIKE = "dislike"
     SKIP = "skip"
+
 
 class Decision(Base):
     __tablename__ = "decisions"
@@ -27,7 +38,8 @@ class Decision(Base):
 
     search_session = relationship("SearchSession", back_populates="decisions")
 
-    __table_args__ = (UniqueConstraint('session_id', 'candidate_id', name='_session_candidate_uc'),)
+    __table_args__ = (UniqueConstraint("session_id", "candidate_id", name="_session_candidate_uc"),)
+
 
 class ContactsRequest(Base):
     __tablename__ = "contacts_requests"
@@ -40,6 +52,7 @@ class ContactsRequest(Base):
 
     employer = relationship("Employer", back_populates="contact_requests")
 
+
 class Employer(Base):
     __tablename__ = "employers"
 
@@ -50,13 +63,19 @@ class Employer(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    search_sessions = relationship("SearchSession", back_populates="employer", cascade="all, delete-orphan")
-    contact_requests = relationship("ContactsRequest", back_populates="employer", cascade="all, delete-orphan")
+    search_sessions = relationship(
+        "SearchSession", back_populates="employer", cascade="all, delete-orphan"
+    )
+    contact_requests = relationship(
+        "ContactsRequest", back_populates="employer", cascade="all, delete-orphan"
+    )
+
 
 class SearchStatus(str, enum.Enum):
     ACTIVE = "active"
     PAUSED = "paused"
     CLOSED = "closed"
+
 
 class SearchSession(Base):
     __tablename__ = "search_sessions"
@@ -70,4 +89,6 @@ class SearchSession(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     employer = relationship("Employer", back_populates="search_sessions")
-    decisions = relationship("Decision", back_populates="search_session", cascade="all, delete-orphan")
+    decisions = relationship(
+        "Decision", back_populates="search_session", cascade="all, delete-orphan"
+    )

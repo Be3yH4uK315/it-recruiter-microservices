@@ -1,10 +1,11 @@
 import datetime as dt
 from uuid import UUID
-from typing import List
+
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import candidate
+
 
 class OutboxRepository:
     def __init__(self, session: AsyncSession):
@@ -15,14 +16,12 @@ class OutboxRepository:
         Создает запись в Outbox.
         """
         db_message = candidate.OutboxMessage(
-            routing_key=routing_key,
-            message_body=message_body,
-            status="pending"
+            routing_key=routing_key, message_body=message_body, status="pending"
         )
         self.session.add(db_message)
         return db_message
 
-    async def get_pending_with_lock(self, limit: int = 100) -> List[candidate.OutboxMessage]:
+    async def get_pending_with_lock(self, limit: int = 100) -> list[candidate.OutboxMessage]:
         """
         Получает неотправленные сообщения с блокировкой (SKIP LOCKED).
         """
@@ -39,7 +38,7 @@ class OutboxRepository:
         """
         Помечает сообщение как отправленное и ставит время обработки.
         """
-        now_utc = dt.datetime.now(dt.timezone.utc)
+        now_utc = dt.datetime.now(dt.UTC)
         query = (
             update(candidate.OutboxMessage)
             .where(candidate.OutboxMessage.id == message_id)

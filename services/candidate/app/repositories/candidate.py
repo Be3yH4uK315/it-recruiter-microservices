@@ -1,36 +1,45 @@
-from typing import Optional, List, Tuple
 from uuid import UUID
-from sqlalchemy import and_, desc, or_, select, func
+
+from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import candidate
 from app.schemas import candidate as schemas
 
+
 class CandidateRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_by_id(self, candidate_id: UUID) -> Optional[candidate.Candidate]:
-        query = select(candidate.Candidate).where(candidate.Candidate.id == candidate_id).options(
-            selectinload(candidate.Candidate.skills),
-            selectinload(candidate.Candidate.resumes),
-            selectinload(candidate.Candidate.projects),
-            selectinload(candidate.Candidate.experiences),
-            selectinload(candidate.Candidate.avatars),
-            selectinload(candidate.Candidate.education)
+    async def get_by_id(self, candidate_id: UUID) -> candidate.Candidate | None:
+        query = (
+            select(candidate.Candidate)
+            .where(candidate.Candidate.id == candidate_id)
+            .options(
+                selectinload(candidate.Candidate.skills),
+                selectinload(candidate.Candidate.resumes),
+                selectinload(candidate.Candidate.projects),
+                selectinload(candidate.Candidate.experiences),
+                selectinload(candidate.Candidate.avatars),
+                selectinload(candidate.Candidate.education),
+            )
         )
         result = await self.session.execute(query)
         return result.scalars().first()
 
-    async def get_by_telegram_id(self, telegram_id: int) -> Optional[candidate.Candidate]:
-        query = select(candidate.Candidate).where(candidate.Candidate.telegram_id == telegram_id).options(
-            selectinload(candidate.Candidate.skills),
-            selectinload(candidate.Candidate.resumes),
-            selectinload(candidate.Candidate.projects),
-            selectinload(candidate.Candidate.experiences),
-            selectinload(candidate.Candidate.avatars),
-            selectinload(candidate.Candidate.education)
+    async def get_by_telegram_id(self, telegram_id: int) -> candidate.Candidate | None:
+        query = (
+            select(candidate.Candidate)
+            .where(candidate.Candidate.telegram_id == telegram_id)
+            .options(
+                selectinload(candidate.Candidate.skills),
+                selectinload(candidate.Candidate.resumes),
+                selectinload(candidate.Candidate.projects),
+                selectinload(candidate.Candidate.experiences),
+                selectinload(candidate.Candidate.avatars),
+                selectinload(candidate.Candidate.education),
+            )
         )
         result = await self.session.execute(query)
         return result.scalars().first()
@@ -39,9 +48,9 @@ class CandidateRepository:
         self,
         limit: int,
         offset: int,
-        search_query: Optional[str] = None,
-        skill_filter: Optional[str] = None,
-    ) -> Tuple[int, List[candidate.Candidate]]:
+        search_query: str | None = None,
+        skill_filter: str | None = None,
+    ) -> tuple[int, list[candidate.Candidate]]:
         filters = [candidate.Candidate.status == candidate.Status.ACTIVE]
 
         if search_query:
@@ -60,11 +69,7 @@ class CandidateRepository:
                 )
             )
 
-        count_query = (
-            select(func.count())
-            .select_from(candidate.Candidate)
-            .where(and_(*filters))
-        )
+        count_query = select(func.count()).select_from(candidate.Candidate).where(and_(*filters))
         total = (await self.session.execute(count_query)).scalar() or 0
 
         query = (
@@ -82,12 +87,16 @@ class CandidateRepository:
         result = await self.session.execute(query)
         return total, result.scalars().all()
 
-    async def get_by_ids(self, candidate_ids: List[UUID]) -> List[candidate.Candidate]:
+    async def get_by_ids(self, candidate_ids: list[UUID]) -> list[candidate.Candidate]:
         if not candidate_ids:
             return []
-        query = select(candidate.Candidate).where(candidate.Candidate.id.in_(candidate_ids)).options(
-             selectinload(candidate.Candidate.avatars),
-             selectinload(candidate.Candidate.skills)
+        query = (
+            select(candidate.Candidate)
+            .where(candidate.Candidate.id.in_(candidate_ids))
+            .options(
+                selectinload(candidate.Candidate.avatars),
+                selectinload(candidate.Candidate.skills),
+            )
         )
         result = await self.session.execute(query)
         return result.scalars().all()
@@ -103,13 +112,13 @@ class CandidateRepository:
 
         if skills_data:
             db_obj.skills = [candidate.CandidateSkill(**s) for s in skills_data]
-        
+
         if projects_data:
             db_obj.projects = [candidate.Project(**p) for p in projects_data]
-            
+
         if experiences_data:
             db_obj.experiences = [candidate.Experience(**e) for e in experiences_data]
-            
+
         if education_data:
             db_obj.education = [candidate.Education(**e) for e in education_data]
 
@@ -118,13 +127,11 @@ class CandidateRepository:
 
     async def delete(self, candidate: candidate.Candidate):
         await self.session.delete(candidate)
-    
+
     async def soft_delete(self, candidate: candidate.Candidate):
         candidate.status = candidate.Status.BLOCKED
 
-    async def replace_avatar(
-        self, candidate: candidate.Candidate, file_id: UUID
-    ) -> Optional[UUID]:
+    async def replace_avatar(self, candidate: candidate.Candidate, file_id: UUID) -> UUID | None:
         old_file_id = None
 
         if candidate.avatars:
@@ -134,12 +141,10 @@ class CandidateRepository:
 
         new_avatar = candidate.Avatar(candidate_id=candidate.id, file_id=file_id)
         self.session.add(new_avatar)
-        
+
         return old_file_id
 
-    async def delete_avatar(
-        self, candidate: candidate.Candidate
-    ) -> Optional[UUID]:
+    async def delete_avatar(self, candidate: candidate.Candidate) -> UUID | None:
         if not candidate.avatars:
             return None
 
@@ -148,9 +153,7 @@ class CandidateRepository:
         await self.session.delete(old_avatar)
         return old_file_id
 
-    async def replace_resume(
-        self, candidate: candidate.Candidate, file_id: UUID
-    ) -> Optional[UUID]:
+    async def replace_resume(self, candidate: candidate.Candidate, file_id: UUID) -> UUID | None:
         old_file_id = None
 
         if candidate.resumes:
@@ -162,9 +165,7 @@ class CandidateRepository:
         self.session.add(new_resume)
         return old_file_id
 
-    async def delete_resume(
-        self, candidate: candidate.Candidate
-    ) -> Optional[UUID]:
+    async def delete_resume(self, candidate: candidate.Candidate) -> UUID | None:
         if not candidate.resumes:
             return None
 
@@ -173,9 +174,7 @@ class CandidateRepository:
         await self.session.delete(old_resume)
         return old_file_id
 
-    async def get_skill(
-        self, skill_id: UUID
-    ) -> Optional[candidate.CandidateSkill]:
+    async def get_skill(self, skill_id: UUID) -> candidate.CandidateSkill | None:
         return await self.session.get(candidate.CandidateSkill, skill_id)
 
     def add_skill(
@@ -183,9 +182,7 @@ class CandidateRepository:
         candidate_id: UUID,
         skill_in: schemas.CandidateSkillCreate,
     ) -> candidate.CandidateSkill:
-        db_skill = candidate.CandidateSkill(
-            **skill_in.model_dump(), candidate_id=candidate_id
-        )
+        db_skill = candidate.CandidateSkill(**skill_in.model_dump(), candidate_id=candidate_id)
         self.session.add(db_skill)
         return db_skill
 
@@ -195,7 +192,7 @@ class CandidateRepository:
     async def sync_skills(
         self,
         candidate: candidate.Candidate,
-        new_skills: List[schemas.CandidateSkillCreate],
+        new_skills: list[schemas.CandidateSkillCreate],
     ):
         current_map = {(s.skill, s.kind): s for s in candidate.skills}
         incoming_keys = set()
@@ -218,9 +215,7 @@ class CandidateRepository:
             if key not in incoming_keys:
                 await self.session.delete(db_skill)
 
-    async def get_project(
-        self, project_id: UUID
-    ) -> Optional[candidate.Project]:
+    async def get_project(self, project_id: UUID) -> candidate.Project | None:
         return await self.session.get(candidate.Project, project_id)
 
     def add_project(
@@ -228,9 +223,7 @@ class CandidateRepository:
         candidate_id: UUID,
         project_in: schemas.ProjectCreate,
     ) -> candidate.Project:
-        db_project = candidate.Project(
-            **project_in.model_dump(), candidate_id=candidate_id
-        )
+        db_project = candidate.Project(**project_in.model_dump(), candidate_id=candidate_id)
         self.session.add(db_project)
         return db_project
 
@@ -240,7 +233,7 @@ class CandidateRepository:
     async def replace_projects(
         self,
         candidate: candidate.Candidate,
-        new_projects: List[schemas.ProjectCreate],
+        new_projects: list[schemas.ProjectCreate],
     ):
         for proj in candidate.projects:
             await self.session.delete(proj)
@@ -261,17 +254,15 @@ class CandidateRepository:
         candidate_id: UUID,
         experience_in: schemas.ExperienceCreate,
     ) -> candidate.Experience:
-        db_exp = candidate.Experience(
-            **experience_in.model_dump(), candidate_id=candidate_id
-        )
+        db_exp = candidate.Experience(**experience_in.model_dump(), candidate_id=candidate_id)
         self.session.add(db_exp)
         return db_exp
 
     async def replace_experiences(
         self,
         candidate: candidate.Candidate,
-        new_experiences: List[schemas.ExperienceCreate],
-    ) -> List[candidate.Experience]:
+        new_experiences: list[schemas.ExperienceCreate],
+    ) -> list[candidate.Experience]:
         for exp in candidate.experiences:
             await self.session.delete(exp)
 
@@ -291,7 +282,7 @@ class CandidateRepository:
     async def replace_education(
         self,
         candidate: candidate.Candidate,
-        new_education: List[schemas.EducationItem],
+        new_education: list[schemas.EducationItem],
     ):
         for edu in candidate.education:
             await self.session.delete(edu)

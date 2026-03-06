@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, status
-
+from app.api.v1 import dependencies
 from app.schemas import candidate as schemas
 from app.services.candidate import CandidateService
-from app.api.v1 import dependencies
+from fastapi import APIRouter, Depends, status
 
 router = APIRouter()
+
 
 @router.put(
     "/by-telegram/{telegram_id}/avatar",
@@ -21,6 +21,7 @@ async def replace_candidate_avatar(
     Старый удаляет через Outbox.
     """
     return await service.update_avatar(telegram_id, avatar_in)
+
 
 @router.delete(
     "/by-telegram/{telegram_id}/avatar",

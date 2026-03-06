@@ -1,6 +1,8 @@
 import logging
 import sys
+
 import structlog
+
 
 def setup_logging(log_level: str = "INFO"):
     shared_processors = [
@@ -10,9 +12,7 @@ def setup_logging(log_level: str = "INFO"):
     ]
 
     structlog.configure(
-        processors=shared_processors + [
-            structlog.processors.JSONRenderer()
-        ],
+        processors=shared_processors + [structlog.processors.JSONRenderer()],
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
     )

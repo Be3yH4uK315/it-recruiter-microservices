@@ -1,6 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 from app.core.resources import ResourceManager
+
 
 @pytest.mark.asyncio
 async def test_resources_lifecycle(mocker):

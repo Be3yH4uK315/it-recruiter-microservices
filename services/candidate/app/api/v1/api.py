@@ -1,9 +1,5 @@
+from app.api.v1.endpoints import avatars, candidates, resumes
 from fastapi import APIRouter
-from app.api.v1.endpoints import (
-    candidates,
-    avatars,
-    resumes
-)
 
 api_router = APIRouter()
 

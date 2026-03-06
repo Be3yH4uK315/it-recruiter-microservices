@@ -1,22 +1,28 @@
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
 import logging
 
-from app.keyboards import inline
-from app.states import candidate, employer
+from aiogram import F, Router
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
+
 from app.core import config, messages
+from app.keyboards import inline
 from app.services import api_client
+from app.states import candidate, employer
 
 router = Router()
 logger = logging.getLogger(__name__)
+
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext) -> None:
     await state.clear()
     logger.info(f"User {message.from_user.id} started /start")
-    await message.answer(messages.Messages.Common.START, reply_markup=inline.get_role_selection_keyboard())
+    await message.answer(
+        messages.Messages.Common.START,
+        reply_markup=inline.get_role_selection_keyboard(),
+    )
+
 
 @router.callback_query(inline.RoleCallback.filter(F.role_name == "candidate"))
 async def cq_select_candidate(callback: CallbackQuery, state: FSMContext) -> None:
@@ -24,15 +30,16 @@ async def cq_select_candidate(callback: CallbackQuery, state: FSMContext) -> Non
     user = callback.from_user
     logger.info(f"User {user.id} selected candidate role")
     await state.update_data(
-        mode='register', 
-        current_field='display_name',
+        mode="register",
+        current_field="display_name",
         experiences=[],
         skills=[],
         projects=[],
-        education=[]
+        education=[],
     )
     await callback.message.edit_text(messages.Messages.Profile.ENTER_NAME)
     await state.set_state(candidate.CandidateFSM.entering_basic_info)
+
 
 @router.callback_query(inline.RoleCallback.filter(F.role_name == "employer"))
 async def cq_select_employer(callback: CallbackQuery, state: FSMContext) -> None:
@@ -45,11 +52,11 @@ async def cq_select_employer(callback: CallbackQuery, state: FSMContext) -> None
     """
     await callback.answer()
     user_id = callback.from_user.id
-    
+
     employer_profile = await api_client.employer_api_client.get_or_create_employer(
         user_id, callback.from_user.username or "HR"
     )
-    
+
     if not employer_profile:
         await callback.message.answer(messages.Messages.EmployerSearch.EMPLOYER_ERROR)
         return
@@ -59,7 +66,7 @@ async def cq_select_employer(callback: CallbackQuery, state: FSMContext) -> None
     company = employer_profile.get("company")
     if company:
         logger.info(f"Employer {user_id} has company '{company}'. Proceeding to filters.")
-        await state.update_data(filter_step='role', filters={})
+        await state.update_data(filter_step="role", filters={})
         await state.set_state(employer.EmployerSearch.entering_filters)
         await callback.message.edit_text(messages.Messages.EmployerSearch.STEP_1)
     else:
@@ -67,17 +74,18 @@ async def cq_select_employer(callback: CallbackQuery, state: FSMContext) -> None
         await state.set_state(employer.EmployerSearch.entering_company_name)
         await callback.message.edit_text(messages.Messages.EmployerSearch.ENTER_COMPANY_NAME)
 
+
 @router.message(employer.EmployerSearch.entering_company_name)
 async def handle_company_name(message: Message, state: FSMContext):
     """Сохраняем введенное название компании в API."""
     company_name = message.text.strip()
     if len(company_name) < 2:
-        await message.answer("Название слишком короткое. Попробуйте еще раз.")
+        await message.answer(messages.Messages.EmployerSearch.COMPANY_NAME_ERROR)
         return
 
     data = await state.get_data()
     employer_profile = data.get("employer_profile")
-    
+
     if not employer_profile:
         await message.answer(messages.Messages.Common.SESSION_TIMEOUT)
         await state.clear()
@@ -85,39 +93,41 @@ async def handle_company_name(message: Message, state: FSMContext):
 
     try:
         updated_profile = await api_client.employer_api_client.update_employer_profile(
-            employer_profile["id"], 
-            {"company": company_name}
+            employer_profile["id"], {"company": company_name}
         )
-        
+
         if updated_profile:
-            logger.info(f"Company name updated to '{company_name}' for user {message.from_user.id}")
+            logger.info(f"Company name updated to '{company_name}' \
+                    for user {message.from_user.id}")
             await state.update_data(employer_profile=updated_profile)
-            await state.update_data(filter_step='role', filters={})
+            await state.update_data(filter_step="role", filters={})
             await state.set_state(employer.EmployerSearch.entering_filters)
             await message.answer(messages.Messages.EmployerSearch.STEP_1)
         else:
             await message.answer(messages.Messages.Common.API_ERROR)
-            
+
     except Exception as e:
         logger.error(f"Failed to update company name: {e}")
         await message.answer(messages.Messages.Common.API_ERROR)
 
+
 @router.message(Command("search"))
 async def cmd_search(message: Message, state: FSMContext) -> None:
     logger.info(f"User {message.from_user.id} started /search")
-    
+
     employer_profile = await api_client.employer_api_client.get_or_create_employer(
         message.from_user.id, message.from_user.username or "HR"
     )
-    
+
     if employer_profile and not employer_profile.get("company"):
         await state.update_data(employer_profile=employer_profile)
         await state.set_state(employer.EmployerSearch.entering_company_name)
         await message.answer(messages.Messages.EmployerSearch.ENTER_COMPANY_NAME)
     else:
-        await state.update_data(filter_step='role')
+        await state.update_data(filter_step="role")
         await state.set_state(employer.EmployerSearch.entering_filters)
         await message.answer(messages.Messages.EmployerSearch.STEP_1)
+
 
 @router.message(Command("admin_reindex"))
 async def cmd_admin_reindex(message: Message):

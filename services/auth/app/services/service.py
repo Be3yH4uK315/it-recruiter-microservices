@@ -1,41 +1,41 @@
-from datetime import datetime
 import hashlib
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from fastapi import HTTPException
-import structlog
+from datetime import datetime
 
-from app.models.auth import User, RefreshToken, UserRole
+import structlog
+from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core import config, security
+from app.models.auth import RefreshToken, User, UserRole
 from app.schemas.auth import TelegramLoginData, TokenResponse
-from app.core import security, config
 
 logger = structlog.get_logger()
+
 
 class AuthService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def authenticate_via_trusted_bot(self, telegram_id: int, username: str | None) -> TokenResponse:
+    async def authenticate_via_trusted_bot(
+        self, telegram_id: int, username: str | None
+    ) -> TokenResponse:
         """
         Авторизация через доверенный источник (Бот).
-        """        
+        """
         stmt = select(User).where(User.telegram_id == telegram_id)
         result = await self.db.execute(stmt)
         user = result.scalars().first()
 
         if not user:
-            user = User(
-                telegram_id=telegram_id,
-                username=username,
-                role=UserRole.CANDIDATE
-            )
+            user = User(telegram_id=telegram_id, username=username, role=UserRole.CANDIDATE)
             self.db.add(user)
             await self.db.flush()
             logger.info("New user registered via Bot", uid=user.id, tg_id=user.telegram_id)
         else:
             if username and user.username != username:
                 user.username = username
-        
+
         return await self._issue_tokens_for_user(user)
 
     async def authenticate_telegram(self, login_data: TelegramLoginData) -> TokenResponse:
@@ -59,7 +59,7 @@ class AuthService:
             user = User(
                 telegram_id=login_data.id,
                 username=login_data.username,
-                role=UserRole.CANDIDATE
+                role=UserRole.CANDIDATE,
             )
             self.db.add(user)
             await self.db.flush()
@@ -67,7 +67,7 @@ class AuthService:
         else:
             if user.username != login_data.username:
                 user.username = login_data.username
-        
+
         return await self._issue_tokens_for_user(user)
 
     async def refresh_access_token(self, refresh_token: str) -> TokenResponse:
@@ -76,13 +76,13 @@ class AuthService:
             raise HTTPException(status_code=401, detail="Invalid refresh token")
 
         user_id = payload.get("sub")
-        
+
         stmt = select(User).where(User.id == user_id)
         result = await self.db.execute(stmt)
         user = result.scalars().first()
-        
+
         if not user or not user.is_active:
-             raise HTTPException(status_code=401, detail="User inactive or not found")
+            raise HTTPException(status_code=401, detail="User inactive or not found")
 
         return await self._issue_tokens_for_user(user)
 
@@ -90,7 +90,7 @@ class AuthService:
         access_payload = {
             "sub": str(user.id),
             "tg_id": user.telegram_id,
-            "role": user.role.value
+            "role": user.role.value,
         }
         refresh_payload = {"sub": str(user.id)}
 
@@ -102,7 +102,7 @@ class AuthService:
         db_token = RefreshToken(
             user_id=user.id,
             token_hash=token_hash,
-            expires_at=datetime.fromtimestamp(security.decode_token(refresh_token)["exp"])
+            expires_at=datetime.fromtimestamp(security.decode_token(refresh_token)["exp"]),
         )
         self.db.add(db_token)
         await self.db.commit()
@@ -110,5 +110,5 @@ class AuthService:
         return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
-            expires_in=config.settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+            expires_in=config.settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )

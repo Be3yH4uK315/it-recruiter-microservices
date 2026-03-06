@@ -1,12 +1,12 @@
 from uuid import UUID
-from typing import Optional
-from fastapi import APIRouter, Depends, Query, status, HTTPException, Request
 
+from app.api.v1 import dependencies
 from app.schemas import candidate as schemas
 from app.services.candidate import CandidateService
-from app.api.v1 import dependencies
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 router = APIRouter()
+
 
 @router.post(
     "/",
@@ -28,6 +28,7 @@ async def create_candidate(
         )
     return await service.create_candidate(candidate_in)
 
+
 @router.get("/", response_model=schemas.PaginatedCandidatesResponse)
 async def get_candidates(
     request: Request,
@@ -46,11 +47,12 @@ async def get_candidates(
         "data": data,
     }
 
+
 @router.get("/{candidate_id}", response_model=schemas.Candidate)
 async def read_candidate(
     candidate_id: UUID,
     service: CandidateService = Depends(dependencies.get_candidate_service),
-    viewer_id: Optional[int] = Depends(dependencies.get_current_user_tg_id),
+    viewer_id: int | None = Depends(dependencies.get_current_user_tg_id),
 ):
     """
     Получение профиля по ID.
@@ -61,12 +63,14 @@ async def read_candidate(
         viewer_tg_id=viewer_id,
     )
 
+
 @router.get("/by-telegram/{telegram_id}", response_model=schemas.Candidate)
 async def read_candidate_by_telegram(
     telegram_id: int,
     service: CandidateService = Depends(dependencies.get_candidate_service),
 ):
     return await service.get_candidate_by_telegram(telegram_id=telegram_id)
+
 
 @router.patch(
     "/by-telegram/{telegram_id}",

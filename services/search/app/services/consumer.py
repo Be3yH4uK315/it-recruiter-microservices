@@ -1,5 +1,6 @@
 import asyncio
 import json
+
 import aio_pika
 import structlog
 
@@ -7,6 +8,7 @@ from app.core.config import settings
 from app.services.indexer import indexer
 
 logger = structlog.get_logger()
+
 
 class RabbitMQConsumer:
     def __init__(self):
@@ -28,9 +30,9 @@ class RabbitMQConsumer:
                 await self.channel.set_qos(prefetch_count=1)
 
                 exchange = await self.channel.declare_exchange(
-                    settings.CANDIDATE_EXCHANGE_NAME, 
-                    aio_pika.ExchangeType.TOPIC, 
-                    durable=True
+                    settings.CANDIDATE_EXCHANGE_NAME,
+                    aio_pika.ExchangeType.TOPIC,
+                    durable=True,
                 )
 
                 queue = await self.channel.declare_queue(
@@ -38,8 +40,8 @@ class RabbitMQConsumer:
                     durable=True,
                     arguments={
                         "x-dead-letter-exchange": settings.DLQ_EXCHANGE_NAME,
-                        "x-dead-letter-routing-key": "search_dlq"
-                    }
+                        "x-dead-letter-routing-key": "search_dlq",
+                    },
                 )
 
                 await queue.bind(exchange, routing_key="candidate.created")
@@ -47,7 +49,7 @@ class RabbitMQConsumer:
                 await queue.bind(exchange, routing_key="candidate.deleted")
 
                 logger.info("RabbitMQ Consumer started. Listening for candidate events...")
-                
+
                 async with queue.iterator() as queue_iter:
                     async for message in queue_iter:
                         async with message.process():
@@ -71,7 +73,7 @@ class RabbitMQConsumer:
                 candidate_data = data.get("payload", data)
                 if "skills" not in candidate_data:
                     pass
-                
+
                 if "id" not in candidate_data and "id" in data:
                     candidate_data["id"] = data["id"]
 
@@ -80,5 +82,6 @@ class RabbitMQConsumer:
         except Exception as e:
             logger.error("Error processing message", error=str(e), routing_key=routing_key)
             raise e
+
 
 consumer = RabbitMQConsumer()
