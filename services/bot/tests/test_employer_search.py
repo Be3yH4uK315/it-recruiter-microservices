@@ -14,7 +14,7 @@ async def test_filter_role_input(mock_message, fsm_context):
 
     data = await fsm_context.get_data()
     assert data["filters"]["role"] == "Java Dev"
-    assert data["filter_step"] == "must_skills"
+    assert data["filter_step"] == "must_skill_name"
 
     mock_message.answer.assert_called_with(Messages.EmployerSearch.STEP_2, reply_markup=None)
 
