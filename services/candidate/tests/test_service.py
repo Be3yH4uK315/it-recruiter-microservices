@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from app.core.circuit_breaker import CircuitBreakerOpenException
 from app.models import candidate as models
 from app.schemas.candidate import CandidateCreate, CandidateSkillCreate, CandidateUpdate
 from fastapi import HTTPException
@@ -246,3 +247,53 @@ async def test_delete_avatar_success(candidate_service, mock_candidate_repo):
 
     mock_candidate_repo.delete_avatar.assert_called_once()
     mock_client.delete.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_candidate_statistics_success(candidate_service, mock_candidate_repo, mocker):
+    """Тест успешного получения статистики от Employer Service."""
+    cand = make_db_candidate()
+    mock_candidate_repo.get_by_telegram_id.return_value = cand
+
+    mock_response = mocker.MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "total_views": 10,
+        "total_likes": 5,
+        "total_contact_requests": 2,
+    }
+
+    mock_get = mocker.AsyncMock(return_value=mock_response)
+    mocker.patch("app.core.resources.resources.http_client.get", new=mock_get)
+
+    mock_cb = mocker.AsyncMock()
+
+    async def mock_call(func, *args, **kwargs):
+        return await func(*args, **kwargs)
+
+    mock_cb.call = mock_call
+
+    mocker.patch("app.services.candidate.candidate_service_breaker", mock_cb)
+
+    stats = await candidate_service.get_candidate_statistics(12345)
+
+    assert stats.total_views == 10
+    assert stats.total_likes == 5
+
+
+@pytest.mark.asyncio
+async def test_get_candidate_statistics_fallback(candidate_service, mock_candidate_repo, mocker):
+    """Тест: если Employer Service недоступен, возвращаем нули (Graceful degradation)."""
+
+    cand = make_db_candidate()
+    mock_candidate_repo.get_by_telegram_id.return_value = cand
+
+    mock_cb = mocker.AsyncMock()
+    mock_cb.call.side_effect = CircuitBreakerOpenException("Open")
+
+    mocker.patch("app.services.candidate.candidate_service_breaker", mock_cb)
+
+    stats = await candidate_service.get_candidate_statistics(12345)
+
+    assert stats.total_views == 0
+    assert stats.total_likes == 0

@@ -8,6 +8,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 router = APIRouter()
 
 
+@router.get("/by-telegram/{telegram_id}/statistics", response_model=schemas.CandidateStatistics)
+async def read_candidate_statistics(
+    telegram_id: int,
+    service: CandidateService = Depends(dependencies.get_candidate_service),
+):
+    """Получить статистику профиля (просмотры, лайки)."""
+    return await service.get_candidate_statistics(telegram_id)
+
+
 @router.post(
     "/",
     response_model=schemas.Candidate,

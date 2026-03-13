@@ -480,7 +480,22 @@ async def handle_profile_action(
     action = callback_data.action
     user_id = callback.from_user.id
 
-    if action == "edit":
+    if action == "stats":
+        await callback.answer(Messages.Profile.LOADING_STATS)
+        try:
+            stats = await api_client.candidate_api_client.get_statistics(user_id)
+            text = Messages.Profile.STATS_TEMPLATE.format(
+                views=stats.get("total_views", 0),
+                likes=stats.get("total_likes", 0),
+                reqs=stats.get("total_contact_requests", 0),
+            )
+            await callback.message.answer(text)
+        except Exception as e:
+            logger.error(f"Error fetching stats for {user_id}: {e}")
+            await callback.message.answer(Messages.Common.API_ERROR)
+        return
+
+    elif action == "edit":
         await state.set_state(CandidateFSM.choosing_field)
         try:
             await callback.message.edit_reply_markup(reply_markup=None)

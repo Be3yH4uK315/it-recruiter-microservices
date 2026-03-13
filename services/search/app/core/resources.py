@@ -43,7 +43,8 @@ class ResourceManager:
 
     @lru_cache(maxsize=1024)
     def get_embedding_cached(self, text: str):
-        return self.embedding_model.encode(text)
+        embeddings = self.embedding_model.encode(text, normalize_embeddings=True)
+        return embeddings
 
     async def encode_text_async(self, text: str | list[str]):
         """Безопасная асинхронная обертка для энкодера"""
@@ -51,7 +52,7 @@ class ResourceManager:
         async with self.ml_semaphore:
             if isinstance(text, str):
                 return await loop.run_in_executor(None, self.get_embedding_cached, text)
-            return await loop.run_in_executor(None, self.embedding_model.encode, text)
+            return await loop.run_in_executor(None, self.embedding_model.encode, text, normalize_embeddings=True)
 
     async def predict_ranker_async(self, pairs: list[list[str]]):
         """Безопасная асинхронная обертка для реранкера"""

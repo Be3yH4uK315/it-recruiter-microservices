@@ -6,6 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from app.core import config, messages
+from app.handlers.candidate import _show_profile
 from app.keyboards import inline
 from app.services import api_client
 from app.states import candidate, employer
@@ -29,6 +30,28 @@ async def cq_select_candidate(callback: CallbackQuery, state: FSMContext) -> Non
     await callback.answer()
     user = callback.from_user
     logger.info(f"User {user.id} selected candidate role")
+    try:
+        profile = await api_client.candidate_api_client.get_candidate_by_telegram_id(user.id)
+        if profile:
+            await state.update_data(mode="edit", profile_cache=profile)
+
+            await callback.answer(messages.Messages.Profile.LOADING_PROFILE)
+            await _show_profile(callback, state)
+            return
+
+    except api_client.APIHTTPError as e:
+        if e.status_code == 404:
+            pass
+        else:
+            logger.error(f"API Error fetching candidate profile: {e}")
+            await callback.answer(messages.Messages.Common.API_ERROR, show_alert=True)
+            return
+    except Exception as e:
+        logger.error(f"Network/Unexpected Error: {e}")
+        await callback.answer(messages.Messages.Common.API_ERROR, show_alert=True)
+        return
+
+    await callback.answer()
     await state.update_data(
         mode="register",
         current_field="display_name",
@@ -37,19 +60,21 @@ async def cq_select_candidate(callback: CallbackQuery, state: FSMContext) -> Non
         projects=[],
         education=[],
     )
-    await callback.message.edit_text(messages.Messages.Profile.ENTER_NAME)
+
+    try:
+        if callback.message.photo:
+            await callback.message.delete()
+            await callback.message.answer(messages.Messages.Profile.ENTER_NAME)
+        else:
+            await callback.message.edit_text(messages.Messages.Profile.ENTER_NAME)
+    except Exception:
+        await callback.message.answer(messages.Messages.Profile.ENTER_NAME)
+
     await state.set_state(candidate.CandidateFSM.entering_basic_info)
 
 
 @router.callback_query(inline.RoleCallback.filter(F.role_name == "employer"))
 async def cq_select_employer(callback: CallbackQuery, state: FSMContext) -> None:
-    """
-    Логика:
-    1. Идем в API, ищем профиль.
-    2. Если нет -> создаем (get_or_create).
-    3. Если в профиле нет 'company' -> просим ввести (FSM: entering_company_name).
-    4. Если есть -> идем к фильтрам.
-    """
     await callback.answer()
     user_id = callback.from_user.id
 
@@ -65,10 +90,11 @@ async def cq_select_employer(callback: CallbackQuery, state: FSMContext) -> None
 
     company = employer_profile.get("company")
     if company:
-        logger.info(f"Employer {user_id} has company '{company}'. Proceeding to filters.")
-        await state.update_data(filter_step="role", filters={})
-        await state.set_state(employer.EmployerSearch.entering_filters)
-        await callback.message.edit_text(messages.Messages.EmployerSearch.STEP_1)
+        logger.info(f"Employer {user_id} has company '{company}'. Showing menu.")
+        await state.set_state(employer.EmployerSearch.main_menu)
+        await callback.message.edit_text(
+            messages.Messages.EmployerMenu.MAIN_MENU, reply_markup=inline.get_employer_main_menu()
+        )
     else:
         logger.info(f"Employer {user_id} missing company name. Asking user.")
         await state.set_state(employer.EmployerSearch.entering_company_name)
@@ -95,17 +121,15 @@ async def handle_company_name(message: Message, state: FSMContext):
         updated_profile = await api_client.employer_api_client.update_employer_profile(
             employer_profile["id"], {"company": company_name}
         )
-
         if updated_profile:
-            logger.info(f"Company name updated to '{company_name}' \
-                    for user {message.from_user.id}")
             await state.update_data(employer_profile=updated_profile)
-            await state.update_data(filter_step="role", filters={})
-            await state.set_state(employer.EmployerSearch.entering_filters)
-            await message.answer(messages.Messages.EmployerSearch.STEP_1)
+            await state.set_state(employer.EmployerSearch.main_menu)
+            await message.answer(
+                messages.Messages.EmployerMenu.MAIN_MENU,
+                reply_markup=inline.get_employer_main_menu(),
+            )
         else:
             await message.answer(messages.Messages.Common.API_ERROR)
-
     except Exception as e:
         logger.error(f"Failed to update company name: {e}")
         await message.answer(messages.Messages.Common.API_ERROR)
@@ -113,20 +137,19 @@ async def handle_company_name(message: Message, state: FSMContext):
 
 @router.message(Command("search"))
 async def cmd_search(message: Message, state: FSMContext) -> None:
-    logger.info(f"User {message.from_user.id} started /search")
-
     employer_profile = await api_client.employer_api_client.get_or_create_employer(
         message.from_user.id, message.from_user.username or "HR"
     )
-
     if employer_profile and not employer_profile.get("company"):
         await state.update_data(employer_profile=employer_profile)
         await state.set_state(employer.EmployerSearch.entering_company_name)
         await message.answer(messages.Messages.EmployerSearch.ENTER_COMPANY_NAME)
-    else:
-        await state.update_data(filter_step="role")
-        await state.set_state(employer.EmployerSearch.entering_filters)
-        await message.answer(messages.Messages.EmployerSearch.STEP_1)
+    elif employer_profile:
+        await state.update_data(employer_profile=employer_profile)
+        await state.set_state(employer.EmployerSearch.main_menu)
+        await message.answer(
+            messages.Messages.EmployerMenu.MAIN_MENU, reply_markup=inline.get_employer_main_menu()
+        )
 
 
 @router.message(Command("admin_reindex"))

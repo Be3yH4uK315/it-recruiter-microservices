@@ -1,30 +1,25 @@
 # Candidate Service
 
-Микросервис управления профилями кандидатов. Сохраняет данные кандидатов, управляет загрузками файлов и публикует события для синхронизации с Search Service. Часть IT recruiter monorepo.
+Микросервис управления профилями кандидатов. Сохраняет данные, управляет файлами, публикует события для синхронизации индексов и контролирует доступ к контактам.
 
 ## Описание
 
 Основная функциональность:
-- **CRUD профилей** кандидатов (создание, чтение, обновление)
-- **Иерархические данные**: опыт, навыки, проекты, образование
-- **Управление файлами**: резюме и аватары (presigned URL для загрузки в File Service)
-- **Event Publishing**: Outbox pattern для надежной публикации событий в RabbitMQ
-- **Контроль доступа**: видимость контактов через запрос от роли работодателя
-- **Circuit Breaker**: для защиты от отказов Employer Service
-- **Идемпотентность**: поддержка Idempotency-Key для безопасных повторных запросов
+- **CRUD профилей**: создание, чтение, обновление кандидатов с иерархическими данными
+- **Иерархические data**: опыт работы, навыки (уровни 1-5), проекты, образование, резюме, аватары
+- **Outbox Pattern**: надежная публикация событий в RabbitMQ через background worker (batch processing 50 msgs/2sec)
+- **Идемпотентность**: защита от дублей через Idempotency-Key header (middleware-level)
+- **Circuit Breaker**: graceful degradation при недоступности Employer Service (2-state: CLOSED/OPEN)
+- **Контроль доступа**: видимость контактов (public/on-request/hidden) с проверкой разрешений
+- **File Management**: интеграция с File Service для presigned URLs и удаления
 
 ## Технологический стек
 
-- **Framework**: FastAPI 0.116.1
-- **Database**: PostgreSQL с SQLAlchemy ORM 2.0.43
-- **Async Driver**: asyncpg
-- **Message Broker**: RabbitMQ (aio-pika)
-- **Resilience**: Circuit Breaker, tenacity (retry логика)
-- **Rate Limiting**: slowapi
-- **Observability**: 
-  - Prometheus (prometheus-fastapi-instrumentator)
-  - OpenTelemetry (OTLP exporter)
-  - Structlog для структурированного логирования
+- **Framework**: FastAPI 0.116.1, Uvicorn с UVLoop
+- **Database**: PostgreSQL 15 с SQLAlchemy 2.0.43 + asyncpg
+- **Message Broker**: RabbitMQ (aio-pika 9.5.7, TOPIC exchange)
+- **Resilience**: Circuit Breaker + Tenacity + Outbox + Idempotency middleware
+- **Observability**: Prometheus + OpenTelemetry + Structlog
 
 ## API Endpoints
 
@@ -95,7 +90,7 @@
 ### GET `/v1/candidates/{candidate_id}`
 Получение профиля по ID.
 
-**Response**: согласно схеме `Candidate` (с фильтрацией контактов)
+**Response**: согласно схеме `Candidate` (контакты скрываются автоматически в зависимости от прав viewer_id).
 
 ### GET `/v1/candidates/by-telegram/{telegram_id}`
 Получение профиля по Telegram ID.
@@ -109,10 +104,22 @@
 
 **Response**: обновленный профиль
 
-**Побочный эффект**: отправка события `candidate.updated.profile` в Outbox для Search Service
+**Побочный эффект**: отправка события candidate.updated.profile в Outbox для Search Service.
+
+### GET `/v1/candidates/by-telegram/{telegram_id}/statistics`
+Получение статистики кандидата (агрегация из Employer Service).
+
+**Response**:
+```json
+{
+  "total_views": 42,
+  "total_likes": 5,
+  "total_contact_requests": 2
+}
+```
 
 ### PUT `/v1/candidates/by-telegram/{telegram_id}/avatar`
-Установка аватара кандидата.
+Установка аватара кандидата. Старый файл синхронно удаляется из File Service.
 
 **Request Body**:
 ```json
@@ -240,11 +247,11 @@ created_at (DateTime)
 ## Event Publishing
 
 ### Outbox Pattern
-1. При обновлении кандидата событие записывается в таблицу `outbox_messages` (в той же транзакции)
-2. Отдельный Background Worker процесс периодически читает pending сообщения
-3. Публикует их в RabbitMQ с гарантией доставки
-4. При успехе - отмечает как sent
-5. При критическом сбое после N повторов - отправляет в DLQ
+1. При обновлении кандидата событие записывается в таблицу `outbox_messages` (в той же транзакции).
+2. Отдельный Background Worker периодически читает pending сообщения через `SELECT ... FOR UPDATE SKIP LOCKED`.
+3. Публикует их в RabbitMQ с гарантией доставки.
+4. При успехе - отмечает как `sent`.
+5. При критическом сбое после `MAX_RETRIES` гарантированно переводит в статус `failed` и отправляет в DLQ (Dead Letter Queue).
 
 ### События
 | Event | Routing Key | Слушатель |
@@ -390,31 +397,31 @@ pytest --cov=app tests/
 ## Обработка ошибок
 
 ### Валидация
-- Проверка длины строк
-- Валидация дат (формат ГГГГ-ММ-ДД)
-- Диапазоны уровней навыков (1-5)
-- Проверка уникальности telegram_id
+- Проверка длины строк.
+- Валидация дат (формат ГГГГ-ММ-ДД).
+- Диапазоны уровней навыков (1-5).
+- Проверка уникальности telegram_id.
 
 ### Resilience
-- **Retry**: tenacity с exponential backoff для HTTP запросов
-- **Circuit Breaker**: автоматическое отключение при сбойных сервисах
-- **Idempotency**: защита от дублирования при сетевых ошибках
+- **Retry**: tenacity с exponential backoff для HTTP запросов.
+- **Circuit Breaker**: автоматическое отключение при сбойных сервисах.
+- **Idempotency**: защита от дублирования при сетевых ошибках.
 
 ### Database
-- Автоматический rollback при ошибке
-- Connection pooling с `pool_pre_ping=True`
-- Cascade delete для связанных данных
+- Автоматический rollback при ошибке.
+- Connection pooling с `pool_pre_ping=True`.
+- Cascade delete для связанных данных.
 
 ## Интеграция с другими сервисами
 
 ### File Service
-- Получение presigned URL для загрузки
-- Удаление файлов через Outbox события
+- Получение presigned URL для загрузки.
+- Удаление файлов через Outbox события.
 
 ### Employer Service (Circuit Breaker)
-- Проверка доступа работодателя к контактам кандидата
-- При отказе - использует сохраненное состояние
+- Проверка доступа работодателя к контактам (`GET /internal/access-check`).
+- Получение статистики кандидата (`GET /candidates/{candidate_id}/statistics`).
 
 ### Search Service
-- Подписывается на события `candidate.updated.profile`
-- Переиндексирует кандидата в Milvus и Elasticsearch
+- Подписывается на события `candidate.updated.profile`.
+- Переиндексирует кандидата в Milvus и Elasticsearch.

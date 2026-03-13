@@ -9,7 +9,7 @@ from jose import jwt
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.circuit_breaker import employer_service_breaker
+from app.core.circuit_breaker import CircuitBreakerOpenException, candidate_service_breaker
 from app.core.config import settings
 from app.core.resources import resources
 from app.models import candidate as models
@@ -36,16 +36,13 @@ class CandidateService:
         return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
 
     async def _emit_updated_event(
-        self,
-        candidate: models.Candidate,
-        update_data: dict[str, Any] | None = None,
+        self, candidate: models.Candidate, update_data: dict[str, Any] | None = None
     ):
         """
         Отправка события изменения в Outbox.
         Это событие слушает Search Service для переиндексации.
         """
         await self.db.refresh(candidate)
-
         pydantic_candidate = schemas.Candidate.model_validate(candidate)
         routing_key = "candidate.updated.profile"
 
@@ -55,9 +52,7 @@ class CandidateService:
         )
 
     async def _sanitize_candidate(
-        self,
-        candidate: models.Candidate,
-        viewer_tg_id: int | None,
+        self, candidate: models.Candidate, viewer_tg_id: int | None
     ) -> models.Candidate:
         """
         Скрывает контакты в зависимости от настроек видимости.
@@ -66,7 +61,6 @@ class CandidateService:
             return candidate
 
         self.db.expunge(candidate)
-
         should_hide = False
 
         if candidate.contacts_visibility == models.ContactsVisibility.HIDDEN:
@@ -84,49 +78,23 @@ class CandidateService:
 
         return candidate
 
-    async def _check_employer_access(
-        self,
-        candidate_id: UUID,
-        employer_tg_id: int,
-    ) -> bool:
-        """
-        Межсервисный запрос в Employer Service.
-        Использует Circuit Breaker.
-        """
+    async def _check_employer_access(self, candidate_id: UUID, employer_tg_id: int) -> bool:
         url = f"{settings.EMPLOYER_SERVICE_URL}/internal/access-check"
 
         async def _call():
             resp = await resources.http_client.get(
                 url,
-                params={
-                    "candidate_id": str(candidate_id),
-                    "employer_telegram_id": employer_tg_id,
-                },
+                params={"candidate_id": str(candidate_id), "employer_telegram_id": employer_tg_id},
             )
             if resp.status_code in (403, 404):
                 return False
             resp.raise_for_status()
-            data = resp.json()
-            return data.get("granted", False)
+            return resp.json().get("granted", False)
 
         try:
-            return await employer_service_breaker.call(_call)
+            return await candidate_service_breaker.call(_call)
         except Exception:
             return False
-
-    async def _ensure_owner(self, candidate_id: UUID, user_tg_id: int | None):
-        """Проверка прав на редактирование."""
-        if user_tg_id is None:
-            raise HTTPException(status_code=401, detail="Authentication required")
-
-        candidate = await self.repo.get_by_id(candidate_id)
-        if not candidate:
-            raise HTTPException(status_code=404, detail="Candidate not found")
-
-        if candidate.telegram_id != user_tg_id:
-            raise HTTPException(status_code=403, detail="Forbidden")
-
-        return candidate
 
     async def create_candidate(self, candidate_in: schemas.CandidateCreate) -> models.Candidate:
         try:
@@ -209,9 +177,7 @@ class CandidateService:
             await self.repo.replace_education(candidate, candidate_in.education)
 
         await self.db.flush()
-
         await self._emit_updated_event(candidate, update_data)
-
         await self.db.commit()
         await self.db.refresh(candidate)
         return candidate
@@ -226,10 +192,16 @@ class CandidateService:
             "content_type": content_type,
         }
 
-        try:
+        async def _call():
             resp = await resources.http_client.post(url, json=payload)
             resp.raise_for_status()
-            return schemas.ResumeUploadResponse(**resp.json())
+            return resp.json()
+
+        try:
+            data = await candidate_service_breaker.call(_call)
+            return schemas.ResumeUploadResponse(**data)
+        except CircuitBreakerOpenException:
+            raise HTTPException(status_code=503, detail="File service is currently unavailable")
         except httpx.HTTPError as e:
             raise HTTPException(status_code=502, detail=f"File service error: {e}")
 
@@ -251,8 +223,8 @@ class CandidateService:
 
     async def delete_resume(self, telegram_id: int):
         candidate = await self.get_candidate_by_telegram(telegram_id)
-
         deleted_file_id = await self.repo.delete_resume(candidate)
+
         if not deleted_file_id:
             raise HTTPException(status_code=404, detail="Resume not found")
 
@@ -260,16 +232,12 @@ class CandidateService:
 
         await self.db.flush()
         await self._emit_updated_event(candidate, {"resumes": True})
-
         self.outbox.create(
-            routing_key="file.resume.deleted",
-            message_body={"file_id": str(deleted_file_id)},
+            routing_key="file.resume.deleted", message_body={"file_id": str(deleted_file_id)}
         )
-
         await self.db.commit()
 
     async def update_avatar(self, telegram_id: int, avatar_in: schemas.AvatarCreate):
-        logger.info(f"Updating avatar for tg_id={telegram_id}")
         candidate = await self.get_candidate_by_telegram(telegram_id)
 
         if candidate.avatars:
@@ -279,12 +247,9 @@ class CandidateService:
 
         await self.db.flush()
         await self.db.refresh(candidate, attribute_names=["avatars"])
-
         await self._emit_updated_event(candidate, {"avatars": True})
-
         await self.db.commit()
 
-        logger.info(f"Avatar updated. New ID: {candidate.avatars[0].id}")
         return candidate.avatars[0]
 
     async def delete_avatar(self, telegram_id: int):
@@ -299,10 +264,33 @@ class CandidateService:
         await self.db.flush()
         await self._emit_updated_event(candidate, {"avatars": True})
         self.outbox.create(
-            routing_key="file.avatar.deleted",
-            message_body={"file_id": str(deleted_file_id)},
+            routing_key="file.avatar.deleted", message_body={"file_id": str(deleted_file_id)}
         )
         await self.db.commit()
+
+    async def get_candidate_statistics(self, telegram_id: int) -> schemas.CandidateStatistics:
+        candidate = await self.get_candidate_by_telegram(telegram_id)
+
+        url = f"{settings.EMPLOYER_SERVICE_URL}/employers/candidates/{candidate.id}/statistics"
+
+        async def _call():
+            resp = await resources.http_client.get(url)
+            resp.raise_for_status()
+            return resp.json()
+
+        try:
+            data = await candidate_service_breaker.call(_call)
+            return schemas.CandidateStatistics(**data)
+        except CircuitBreakerOpenException:
+            logger.warning("Circuit breaker open, returning zero stats")
+            return schemas.CandidateStatistics(
+                total_views=0, total_likes=0, total_contact_requests=0
+            )
+        except Exception as e:
+            logger.error(f"Failed to fetch stats for candidate {candidate.id}: {e}")
+            return schemas.CandidateStatistics(
+                total_views=0, total_likes=0, total_contact_requests=0
+            )
 
     async def _delete_file_from_storage(self, file_id: UUID, owner_telegram_id: int):
         """
@@ -312,11 +300,12 @@ class CandidateService:
         token = self._create_system_token(owner_telegram_id)
         headers = {"Authorization": f"Bearer {token}"}
 
-        try:
+        async def _call():
             resp = await resources.http_client.delete(url, headers=headers)
-
             if resp.status_code != 404:
                 resp.raise_for_status()
 
+        try:
+            await candidate_service_breaker.call(_call)
         except Exception as e:
             logger.error(f"Failed to delete file {file_id} from storage: {e}")

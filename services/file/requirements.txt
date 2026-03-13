@@ -16,6 +16,7 @@ aioboto3==10.4.0
 
 # --- Security ---
 python-jose[cryptography]==3.3.0
+filetype==1.0.7
 
 # --- Utilities ---
 httpx==0.28.1

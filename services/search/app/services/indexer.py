@@ -11,6 +11,7 @@ from jose import jwt
 from app.core.config import settings
 from app.core.resources import resources
 from app.services.milvus_client import milvus_client
+from app.utils.currency import normalize_to_rub
 
 logger = structlog.get_logger()
 
@@ -168,23 +169,18 @@ class IndexerService:
     def _prepare_es_doc(self, data: dict) -> dict:
         skills = data.get("skills", [])
         structured_skills = []
-        if skills:
-            if isinstance(skills[0], dict):
-                structured_skills = [
-                    {"skill": s.get("skill", "").lower(), "level": s.get("level")} for s in skills
-                ]
-            else:
-                structured_skills = [{"skill": str(s).lower(), "level": None} for s in skills]
+        for s in skills:
+            if isinstance(s, dict):
+                structured_skills.append({"skill": s.get("skill", "").lower(), "level": s.get("level", 3)})
+            elif isinstance(s, str):
+                structured_skills.append({"skill": s.lower(), "level": 3})
 
-        edu_list = data.get("education", [])
-        edu_text = (
-            "; ".join([f"{e.get('level','')} {e.get('institution','')}" for e in edu_list])
-            if edu_list
-            else ""
-        )
+        edu_text = " ".join([f"{e.get('level','')} {e.get('institution','')}" for e in data.get("education", [])])
+
+        salary_min_rub = normalize_to_rub(data.get("salary_min"), data.get("currency"))
+        salary_max_rub = normalize_to_rub(data.get("salary_max"), data.get("currency"))
 
         return {
-            "id": data["id"],
             "telegram_id": data.get("telegram_id"),
             "display_name": data.get("display_name"),
             "headline_role": data.get("headline_role"),
@@ -196,6 +192,8 @@ class IndexerService:
             "education_text": edu_text,
             "salary_min": data.get("salary_min"),
             "salary_max": data.get("salary_max"),
+            "salary_min_rub": salary_min_rub,
+            "salary_max_rub": salary_max_rub,
             "currency": data.get("currency", "RUB"),
             "english_level": data.get("english_level"),
             "about_me": data.get("about_me"),
@@ -214,8 +212,30 @@ class IndexerService:
                 skill_names = ", ".join(skills)
             parts.append(f"Skills: {skill_names}")
 
-        if exp := data.get("experience_years"):
-            parts.append(f"Experience: {exp} years")
+        if exp_years := data.get("experience_years"):
+            parts.append(f"Experience: {exp_years} years")
+
+        experiences = data.get("experiences", [])
+        if experiences:
+            exp_texts = []
+            for exp in experiences:
+                pos = exp.get("position", "")
+                resp = exp.get("responsibilities", "")
+                if pos or resp:
+                    exp_texts.append(f"{pos}: {resp}")
+            if exp_texts:
+                parts.append("Work history: " + " | ".join(exp_texts))
+                
+        projects = data.get("projects", [])
+        if projects:
+            proj_texts = []
+            for proj in projects:
+                title = proj.get("title", "")
+                desc = proj.get("description", "")
+                if title or desc:
+                    proj_texts.append(f"{title}: {desc}")
+            if proj_texts:
+                parts.append("Projects: " + " | ".join(proj_texts))
 
         if edu := data.get("education"):
             edu_str = ", ".join([f"{e.get('level','')} in {e.get('institution','')}" for e in edu])

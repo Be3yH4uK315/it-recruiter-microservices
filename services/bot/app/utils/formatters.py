@@ -80,7 +80,7 @@ def format_candidate_profile(profile: dict[str, Any], is_owner: bool = False) ->
     text += f"<b>📍 Локация:</b> {profile.get('location', 'Не указана')}\n\n"
 
     if profile.get("english_level"):
-        text += f"<b>🇬🇧 Английский:</b> {profile['english_level']}\n"
+        text += f"<b>🇬🇧 Английский:</b> {profile['english_level']}\n\n"
 
     if profile.get("about_me"):
         about = profile["about_me"]

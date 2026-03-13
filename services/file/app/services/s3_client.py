@@ -154,13 +154,23 @@ class S3Service:
             logger.error(f"Failed to delete file {object_key}: {e}")
             raise
 
-    async def generate_presigned_url(self, object_key: str, expiration: int = 3600) -> str:
-        """Сгенерировать presigned URL с логированием."""
+    async def generate_presigned_url(
+        self,
+        object_key: str,
+        client_method: str = "get_object",
+        expiration: int = 3600,
+        content_type: str = None,
+    ) -> str:
         try:
             async with self.get_client() as client:
+                params = {"Bucket": self.bucket, "Key": object_key}
+
+                if client_method == "put_object" and content_type:
+                    params["ContentType"] = content_type
+
                 url = await client.generate_presigned_url(
-                    "get_object",
-                    Params={"Bucket": self.bucket, "Key": object_key},
+                    client_method,
+                    Params=params,
                     ExpiresIn=expiration,
                 )
 
@@ -172,8 +182,9 @@ class S3Service:
                     "presigned_url_generated",
                     extra={
                         "object_key": object_key,
+                        "method": client_method,
+                        "content_type_enforced": content_type,
                         "expires_in_seconds": expiration,
-                        "uses_public_domain": bool(settings.S3_PUBLIC_DOMAIN),
                     },
                 )
 

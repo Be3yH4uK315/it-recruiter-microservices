@@ -45,7 +45,7 @@ class SimpleCircuitBreaker:
             raise e
 
 
-employer_service_breaker = SimpleCircuitBreaker(
+candidate_service_breaker = SimpleCircuitBreaker(
     failure_threshold=settings.CIRCUIT_BREAKER_FAILURE_THRESHOLD,
     recovery_timeout=settings.CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
 )

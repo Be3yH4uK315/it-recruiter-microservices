@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 import httpx
 from redis.asyncio import Redis
@@ -16,25 +17,28 @@ class AuthManager:
         self.auth_url = settings.AUTH_SERVICE_URL.rstrip("/")
         self.secret = settings.INTERNAL_BOT_SECRET
 
-    async def get_token(self, telegram_id: int, username: str | None = None) -> str | None:
+    async def get_token(
+        self, telegram_id: int, username: Optional[str] = None, role: str = "candidate"
+    ) -> Optional[str]:
         """
-        Возвращает валидный Access Token.
-        1. Ищет в Redis.
-        2. Если нет -> идет в Auth Service -> сохраняет в Redis -> возвращает.
+        Возвращает валидный Access Token с учетом РОЛИ.
         """
-        redis_key = f"token_access:{telegram_id}"
+        redis_key = f"token_access:{telegram_id}:{role}"
 
         token = await self.redis.get(redis_key)
         if token:
             return token
 
-        logger.info(f"Token missing/expired for {telegram_id}. Logging in via Auth Service...")
+        logger.info(
+            f"Token missing/expired for {telegram_id} (Role: {role}). Logging in via Auth Service..."
+        )
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 payload = {
                     "telegram_id": telegram_id,
                     "username": username,
                     "bot_secret": self.secret,
+                    "role": role,
                 }
                 response = await client.post(f"{self.auth_url}/v1/auth/login/bot", json=payload)
                 response.raise_for_status()
@@ -43,12 +47,12 @@ class AuthManager:
                 access_token = data["access_token"]
                 expires_in = data.get("expires_in", 3600)
                 ttl = max(60, expires_in - 60)
-                await self.redis.setex(redis_key, ttl, access_token)
 
+                await self.redis.setex(redis_key, ttl, access_token)
                 return access_token
 
         except Exception as e:
-            logger.error(f"Failed to authenticate user {telegram_id}: {e}")
+            logger.error(f"Failed to authenticate user {telegram_id} as {role}: {e}")
             return None
 
     async def close(self):

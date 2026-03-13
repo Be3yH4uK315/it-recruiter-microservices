@@ -9,6 +9,17 @@ from app.services.employer import EmployerService
 router = APIRouter()
 
 
+@router.get(
+    "/candidates/{candidate_id}/statistics", response_model=schemas.CandidateStatisticsResponse
+)
+async def get_candidate_statistics(
+    candidate_id: UUID,
+    service: EmployerService = Depends(dependencies.get_service),
+):
+    """Получить статистику по конкретному кандидату."""
+    return await service.get_candidate_statistics(candidate_id)
+
+
 @router.post("/", response_model=schemas.Employer, status_code=status.HTTP_201_CREATED)
 async def create_employer(
     employer: schemas.EmployerCreate,
@@ -99,3 +110,39 @@ async def check_access(
     if not has_access:
         raise HTTPException(status_code=403, detail="Access denied")
     return {"granted": True}
+
+
+@router.get("/{employer_id}/favorites", response_model=list[schemas.CandidatePreview])
+async def get_favorites(
+    employer_id: UUID,
+    service: EmployerService = Depends(dependencies.get_service),
+):
+    """Получить всех кандидатов с решением LIKE"""
+    return await service.get_favorites(employer_id)
+
+
+@router.get("/{employer_id}/unlocked-contacts", response_model=list[schemas.CandidatePreview])
+async def get_unlocked_contacts(
+    employer_id: UUID,
+    service: EmployerService = Depends(dependencies.get_service),
+):
+    """Получить всех кандидатов, которые открыли контакты"""
+    return await service.get_unlocked_contacts(employer_id)
+
+
+@router.get("/{employer_id}/searches", response_model=list[schemas.SearchSession])
+async def get_employer_searches(
+    employer_id: UUID,
+    service: EmployerService = Depends(dependencies.get_service),
+):
+    """Получить историю поисков HR."""
+    return await service.get_employer_sessions(employer_id)
+
+
+@router.get("/{employer_id}/statistics", response_model=schemas.EmployerStatisticsResponse)
+async def get_employer_statistics(
+    employer_id: UUID,
+    service: EmployerService = Depends(dependencies.get_service),
+):
+    """Получить воронку (статистику) рекрутмента."""
+    return await service.get_employer_statistics(employer_id)

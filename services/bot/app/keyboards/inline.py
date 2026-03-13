@@ -58,6 +58,20 @@ class EnglishLevelCallback(CallbackData, prefix="eng"):
     level: str
 
 
+class EmployerMenuAction(CallbackData, prefix="emp_menu"):
+    action: str
+
+
+class EmployerListAction(CallbackData, prefix="emp_list"):
+    action: str
+    index: int
+    list_type: str
+
+
+class EmployerSessionAction(CallbackData, prefix="emp_ses"):
+    session_id: str
+
+
 def get_role_selection_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
         [
@@ -121,6 +135,14 @@ def get_profile_actions_keyboard(
 ) -> InlineKeyboardMarkup:
     """Главное меню профиля."""
     keyboard = []
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                text="📊 Моя статистика", callback_data=ProfileAction(action="stats").pack()
+            )
+        ]
+    )
+
     keyboard.append(
         [
             InlineKeyboardButton(
@@ -424,4 +446,105 @@ def get_english_level_keyboard() -> InlineKeyboardMarkup:
         ]
     )
 
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_employer_main_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔍 Новый поиск",
+                    callback_data=EmployerMenuAction(action="new_search").pack(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⭐️ Избранное",
+                    callback_data=EmployerMenuAction(action="favorites").pack(),
+                ),
+                InlineKeyboardButton(
+                    text="📞 Открытые контакты",
+                    callback_data=EmployerMenuAction(action="contacts").pack(),
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔄 История поисков",
+                    callback_data=EmployerMenuAction(action="history").pack(),
+                ),
+                InlineKeyboardButton(
+                    text="📊 Аналитика", callback_data=EmployerMenuAction(action="stats").pack()
+                ),
+            ],
+        ]
+    )
+
+
+def get_employer_list_keyboard(
+    index: int, total: int, list_type: str, has_resume: bool
+) -> InlineKeyboardMarkup:
+    nav_row = []
+    if index > 0:
+        nav_row.append(
+            InlineKeyboardButton(
+                text="⬅️ Назад",
+                callback_data=EmployerListAction(
+                    action="prev", index=index - 1, list_type=list_type
+                ).pack(),
+            )
+        )
+    if index < total - 1:
+        nav_row.append(
+            InlineKeyboardButton(
+                text="Вперед ➡️",
+                callback_data=EmployerListAction(
+                    action="next", index=index + 1, list_type=list_type
+                ).pack(),
+            )
+        )
+
+    keyboard = [nav_row] if nav_row else []
+    if has_resume:
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="📄 Скачать резюме",
+                    callback_data=EmployerListAction(
+                        action="get_resume", index=index, list_type=list_type
+                    ).pack(),
+                )
+            ]
+        )
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                text="🔙 В меню", callback_data=EmployerMenuAction(action="main").pack()
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_sessions_keyboard(sessions: list[dict]) -> InlineKeyboardMarkup:
+    keyboard = []
+    for s in sessions:
+        title = s.get("title", "Поиск")
+        if len(title) > 30:
+            title = title[:27] + "..."
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text=f"🔎 {title}",
+                    callback_data=EmployerSessionAction(session_id=str(s["id"])).pack(),
+                )
+            ]
+        )
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                text="🔙 В меню", callback_data=EmployerMenuAction(action="main").pack()
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=keyboard)

@@ -246,3 +246,9 @@ class PaginatedCandidatesResponse(BaseModel):
     limit: int
     offset: int
     data: list[Candidate]
+
+
+class CandidateStatistics(BaseModel):
+    total_views: int
+    total_likes: int
+    total_contact_requests: int

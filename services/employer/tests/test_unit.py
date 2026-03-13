@@ -93,3 +93,83 @@ async def test_request_contact_public(employer_service, mock_employer_repo):
 
     assert result.granted is True
     assert result.contacts == {"email": "public@test.com"}
+
+
+@pytest.mark.asyncio
+async def test_get_favorites_success(employer_service, mock_employer_repo, mocker):
+    """Тест списка избранных кандидатов с параллельным запросом."""
+
+    emp_id = uuid4()
+
+    mock_employer_repo.get_by_id.return_value = MagicMock(telegram_id=123)
+
+    cand1, cand2 = uuid4(), uuid4()
+    mock_employer_repo.get_favorites.return_value = [cand1, cand2]
+
+    mock_cb = mocker.AsyncMock()
+
+    mock_cb.call.side_effect = [{"id": str(cand1)}, {"id": str(cand2)}]
+
+    mocker.patch("app.services.employer.employer_service_breaker", mock_cb)
+
+    res = await employer_service.get_favorites(emp_id)
+
+    assert len(res) == 2
+    assert res[0]["id"] == str(cand1)
+
+    assert mock_cb.call.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_get_employer_statistics(employer_service, mock_employer_repo):
+    """Тест получения HR-аналитики."""
+
+    emp_id = uuid4()
+
+    mock_employer_repo.get_by_id.return_value = MagicMock()
+
+    mock_employer_repo.get_statistics.return_value = {
+        "total_viewed": 50,
+        "total_liked": 5,
+        "total_contact_requests": 2,
+        "total_contacts_granted": 1,
+    }
+
+    res = await employer_service.get_employer_statistics(emp_id)
+
+    assert res.total_viewed == 50
+    assert res.total_liked == 5
+
+
+@pytest.mark.asyncio
+async def test_request_contact_hidden_triggers_notification(
+    employer_service, mock_employer_repo, mocker
+):
+    """Тест: Если контакты on_request, создается заявка и инфа для бота."""
+
+    emp_id = uuid4()
+    cand_id = uuid4()
+
+    mock_employer_repo.get_by_id.return_value = MagicMock(
+        id=emp_id, telegram_id=123, company="Test Corp"
+    )
+
+    mock_employer_repo.get_contact_request.return_value = None
+
+    req_id = uuid4()
+
+    mock_employer_repo.create_contact_request.return_value = MagicMock(id=req_id, granted=False)
+
+    mock_cb = mocker.AsyncMock()
+    mock_cb.call.return_value = {"telegram_id": 999, "contacts_visibility": "on_request"}
+
+    mocker.patch("app.services.employer.employer_service_breaker", mock_cb)
+
+    payload = schemas.ContactsRequestCreate(candidate_id=cand_id)
+
+    res = await employer_service.request_contact(emp_id, payload)
+
+    assert type(res) is dict
+    assert res["granted"] is False
+    assert res["notification_info"]["candidate_telegram_id"] == 999
+    assert res["notification_info"]["employer_company"] == "Test Corp"

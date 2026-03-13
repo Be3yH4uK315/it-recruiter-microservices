@@ -1,28 +1,24 @@
 # Employer Service
 
-Микросервис управления профилями работодателей и поиском кандидатов. Организует сессии поиска, принимает решения по кандидатам и управляет доступом к контактной информации. Часть IT recruiter monorepo.
+Микросервис управления профилями работодателей, сессиями поиска и аналитикой найма. Организует поиск через Search Service и управляет запросами доступа к контактам кандидатов.
 
 ## Описание
 
 Основная функциональность:
-- **Управление профилями** работодателей (регистрация, обновление)
-- **Сессии поиска**: создание и управление фильтрами
-- **Поиск кандидатов**: интеграция с Search Service
-- **Принятие решений**: like, dislike, skip для кандидатов
-- **Управление контактами**: запросы доступа к контактам кандидатов
-- **Проверка прав доступа**: для Candidate Service при просмотре контактов
+- **Профили работодателей**: регистрация и обновление компаний
+- **Сессии поиска**: создание сессий с фильтрами (роль, навыки, опыт, локация, зарплата)
+- **Поиск кандидатов**: интеграция с Search Service (получение лучшего кандидата на основе RRF + L2 ранжирования)
+- **Воронка найма**: принятие решений (like/dislike) и ведение HR-аналитики
+- **Контакт запросы**: трехуровневая схема доступа (public/on-request/hidden)
+- **Проверка доступа**: валидация разрешений для Candidate Service (internal endpoint)
 - **Circuit Breaker**: защита от отказов Candidate и Search сервисов
 
 ## Технологический стек
 
-- **Framework**: FastAPI 0.116.1
-- **Database**: PostgreSQL с SQLAlchemy ORM 2.0.43
-- **Async Driver**: asyncpg
-- **Resilience**: Circuit Breaker, tenacity (retry логика)
-- **Observability**: 
-  - Prometheus (prometheus-fastapi-instrumentator)
-  - OpenTelemetry (OTLP exporter)
-  - Structlog для структурированного логирования
+- **Framework**: FastAPI 0.116.1, Uvicorn с UVLoop
+- **Database**: PostgreSQL 15 (SQLAlchemy 2.0.43 + asyncpg)
+- **Resilience**: Circuit Breaker (2 states) + Tenacity retry
+- **Observability**: Prometheus + OpenTelemetry + Structlog
 
 ## API Endpoints
 
@@ -78,15 +74,20 @@
   "title": "Поиск Senior Python Developer",
   "filters": {
     "role": "Python Developer",
-    "must_skills": ["python", "fastapi"],
-    "nice_skills": ["kubernetes", "aws"],
+    "must_skills": [
+      {"skill": "python", "level": 5},
+      {"skill": "fastapi", "level": 4}
+    ],
+    "nice_skills": [
+      {"skill": "docker", "level": 3}
+    ],
     "experience_min": 3,
     "experience_max": 20,
     "location": "Moscow",
     "work_modes": ["remote", "hybrid"],
-    "salary_min": 150000,
     "salary_max": 500000,
-    "currency": "RUB"
+    "currency": "RUB",
+    "english_level": "B2"
   }
 }
 ```
@@ -107,8 +108,6 @@
 ### POST `/v1/searches/{session_id}/next`
 Получение следующего кандидата для сессии поиска.
 
-**Request Body**: пусто
-
 **Response**:
 ```json
 {
@@ -119,7 +118,7 @@
     "experience_years": 5.5,
     "location": "Moscow",
     "work_modes": ["remote"],
-    "skills": ["Python (5/5)", "FastAPI", "PostgreSQL"],
+    "skills": ["Python (5/5)", "FastAPI (3/5)", "PostgreSQL (4/5)"],
     "salary_min": 200000,
     "salary_max": 400000,
     "english_level": "B2",
@@ -138,15 +137,15 @@
 ```
 
 **Логика**:
-1. Получает просмотренные ID из текущей сессии
-2. Вызывает Search Service с фильтрами и исключенными ID
-3. Получает полный профиль кандидата из Candidate Service
-4. Возвращает кандидата с оценкой релевантности (match_score) с контактами скрытыми по умолчанию
+1. Получает просмотренные ID из текущей сессии.
+2. Вызывает Search Service с фильтрами и исключенными ID.
+3. Получает полный профиль кандидата из Candidate Service.
+4. Возвращает кандидата с оценкой релевантности (match_score) с контактами скрытыми по умолчанию.
 
 **Возможные ответы**:
-- Кандидат найден - возвращает полный профиль
-- Кандидаты закончились - возвращает сообщение "No more candidates found"
-- Search Service недоступен - возвращает 503
+- Кандидат найден - возвращает полный профиль.
+- Кандидаты закончились - возвращает сообщение "No more candidates found".
+- Search Service недоступен - возвращает 503.
 
 ### POST `/v1/searches/{session_id}/decisions`
 Отправка решения по кандидату (like, dislike, skip).
@@ -174,6 +173,40 @@
 **Decision Types**: `like`, `dislike`, `skip`
 
 **Уникальность**: Одна сессия может иметь только одно решение для каждого кандидата.
+
+### GET `/v1/employers/{employer_id}/favorites`
+Получить всех кандидатов, которых HR сохранил в закладки (решение LIKE по всем его сессиям). Запрашивает профили параллельно из Candidate Service.
+
+### GET `/v1/employers/{employer_id}/unlocked-contacts`
+Получить всех кандидатов, которые разрешили данному HR доступ к своим контактам.
+
+### GET `/v1/employers/{employer_id}/searches`
+Получить историю сессий поиска данного HR.
+
+### GET `/v1/employers/{employer_id}/statistics`
+Получить агрегированную воронку рекрутмента HR'а.
+
+**Response**:
+```json
+{
+  "total_viewed": 150,
+  "total_liked": 15,
+  "total_contact_requests": 10,
+  "total_contacts_granted": 3
+}
+```
+
+### GET `/v1/employers/candidates/{candidate_id}/statistics`
+Внутренний эндпоинт для Candidate Service. Возвращает эго-метрику кандидата.
+
+**Response**:
+```json
+{
+  "total_views": 42,
+  "total_likes": 5,
+  "total_contact_requests": 2
+}
+```
 
 ### POST `/v1/{employer_id}/contact-requests`
 Запрос доступа к контактам кандидата.

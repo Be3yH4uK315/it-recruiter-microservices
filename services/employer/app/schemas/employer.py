@@ -16,8 +16,6 @@ class EmployerCreate(EmployerBase):
 
 
 class EmployerUpdate(BaseModel):
-    """Модель для обновления профиля работодателя."""
-
     company: str | None = None
     contacts: dict | None = None
 
@@ -31,8 +29,8 @@ class Employer(EmployerBase):
 
 class SearchFilters(BaseModel):
     role: str = Field(..., description="Target job role")
-    must_skills: list[str | dict[str, Any]] = Field(default_factory=list)
-    nice_skills: list[str | dict[str, Any]] | None = Field(default_factory=list)
+    must_skills: list[dict[str, Any]] = Field(default_factory=list)
+    nice_skills: list[dict[str, Any]] | None = Field(default_factory=list)
     experience_min: float | None = Field(0, ge=0)
     experience_max: float | None = Field(None, ge=0)
     location: str | None = None
@@ -41,6 +39,7 @@ class SearchFilters(BaseModel):
     salary_min: int | None = None
     salary_max: int | None = None
     currency: str | None = "RUB"
+    english_level: str | None = None
 
     @field_validator("work_modes", "exclude_ids", mode="before")
     @classmethod
@@ -52,10 +51,11 @@ class SearchFilters(BaseModel):
     def normalize_skills(cls, v: Any) -> list[dict[str, Any]]:
         if not v:
             return []
+
+        normalized = []
         if isinstance(v, str):
             return [{"skill": s.strip().lower(), "level": 3} for s in v.split(",") if s.strip()]
 
-        normalized = []
         for item in v:
             if isinstance(item, str):
                 normalized.append({"skill": item.strip().lower(), "level": 3})
@@ -180,3 +180,16 @@ class ContactDetailsResponse(BaseModel):
     granted: bool
     contacts: dict[str, Any] | None = None
     notification_info: dict[str, Any] | None = None
+
+
+class EmployerStatisticsResponse(BaseModel):
+    total_viewed: int
+    total_liked: int
+    total_contact_requests: int
+    total_contacts_granted: int
+
+
+class CandidateStatisticsResponse(BaseModel):
+    total_views: int
+    total_likes: int
+    total_contact_requests: int

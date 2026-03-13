@@ -594,6 +594,208 @@ async def handle_get_resume(
         await callback.message.answer(Messages.EmployerSearch.RESUME_ERROR)
 
 
+async def show_list_candidate(callback: CallbackQuery, state: FSMContext, index: int):
+    """Отображает кандидата из списка (Избранное или Контакты) с пагинацией."""
+    data = await state.get_data()
+    candidates = data.get("candidate_list", [])
+    list_type = data.get("list_type", "favorites")
+
+    if not candidates or index >= len(candidates) or index < 0:
+        return
+
+    candidate = candidates[index]
+
+    avatar_url = None
+    if candidate.get("avatars") and candidate["avatars"]:
+        avatar_file_id = candidate["avatars"][0].get("file_id")
+        if avatar_file_id:
+            try:
+                avatar_url = await api_client.file_api_client.get_download_url_by_file_id(
+                    avatar_file_id
+                )
+            except Exception:
+                pass
+
+    header = Messages.EmployerMenu.LIST_HEADER.format(current=index + 1, total=len(candidates))
+    caption = f"<b>{header}</b>\n\n" + formatters.format_candidate_profile(
+        candidate, is_owner=False
+    )
+
+    if list_type == "contacts" and candidate.get("contacts"):
+        lines = [f"<b>{k.capitalize()}:</b> {v}" for k, v in candidate["contacts"].items() if v]
+        caption += "\n\n<b>✅ Открытые контакты:</b>\n" + "\n".join(lines)
+
+    has_resume = bool(candidate.get("resumes"))
+    keyboard = inline.get_employer_list_keyboard(index, len(candidates), list_type, has_resume)
+
+    try:
+        if avatar_url:
+            media = InputMediaPhoto(media=avatar_url, caption=caption)
+            if callback.message.photo:
+                await callback.message.edit_media(media=media, reply_markup=keyboard)
+            else:
+                await callback.message.delete()
+                await callback.message.answer_photo(
+                    photo=avatar_url, caption=caption, reply_markup=keyboard
+                )
+        else:
+            if callback.message.photo:
+                await callback.message.delete()
+                await callback.message.answer(text=caption, reply_markup=keyboard)
+            else:
+                await callback.message.edit_text(text=caption, reply_markup=keyboard)
+    except Exception as e:
+        logger.error(f"Error displaying list candidate: {e}")
+
+
+@router.callback_query(inline.EmployerMenuAction.filter())
+async def handle_employer_menu(
+    callback: CallbackQuery, callback_data: inline.EmployerMenuAction, state: FSMContext
+):
+    action = callback_data.action
+    data = await state.get_data()
+    employer_profile = data.get("employer_profile")
+    emp_id = employer_profile["id"]
+
+    if action == "new_search":
+        await state.update_data(filter_step="role", filters={})
+        await state.set_state(EmployerSearch.entering_filters)
+        await callback.message.edit_text(Messages.EmployerSearch.STEP_1)
+
+    elif action == "favorites":
+        await callback.answer(Messages.EmployerMenu.UPLOADING_FAVORITES)
+        favorites = await api_client.employer_api_client.get_favorites(emp_id)
+        if not favorites:
+            await callback.message.edit_text(
+                Messages.EmployerMenu.FAVORITES_EMPTY, reply_markup=inline.get_employer_main_menu()
+            )
+            return
+        await state.update_data(candidate_list=favorites, list_type="favorites")
+        await state.set_state(EmployerSearch.viewing_list)
+        await show_list_candidate(callback, state, 0)
+
+    elif action == "contacts":
+        await callback.answer(Messages.EmployerMenu.UPLOADING_CONTACTS)
+        contacts = await api_client.employer_api_client.get_unlocked_contacts(emp_id)
+        if not contacts:
+            await callback.message.edit_text(
+                Messages.EmployerMenu.CONTACTS_EMPTY, reply_markup=inline.get_employer_main_menu()
+            )
+            return
+        await state.update_data(candidate_list=contacts, list_type="contacts")
+        await state.set_state(EmployerSearch.viewing_list)
+        await show_list_candidate(callback, state, 0)
+
+    elif action == "main":
+        await state.set_state(EmployerSearch.main_menu)
+        if callback.message.photo:
+            await callback.message.delete()
+            await callback.message.answer(
+                Messages.EmployerMenu.MAIN_MENU, reply_markup=inline.get_employer_main_menu()
+            )
+        else:
+            await callback.message.edit_text(
+                Messages.EmployerMenu.MAIN_MENU, reply_markup=inline.get_employer_main_menu()
+            )
+
+    elif action == "stats":
+        await callback.answer(Messages.EmployerMenu.LOADING_STATS)
+        stats = await api_client.employer_api_client.get_statistics(emp_id)
+
+        view = stats.get("total_viewed", 0)
+        like = stats.get("total_liked", 0)
+        req = stats.get("total_contact_requests", 0)
+        grant = stats.get("total_contacts_granted", 0)
+
+        liked_perc = f"({int(like/view * 100)}%)" if view > 0 else ""
+        granted_perc = f"({int(grant/req * 100)}%)" if req > 0 else ""
+
+        text = Messages.EmployerMenu.STATS_TEMPLATE.format(
+            viewed=view,
+            liked=like,
+            liked_perc=liked_perc,
+            reqs=req,
+            granted=grant,
+            granted_perc=granted_perc,
+        )
+        if callback.message.photo:
+            await callback.message.delete()
+            await callback.message.answer(text, reply_markup=inline.get_employer_main_menu())
+        else:
+            await callback.message.edit_text(text, reply_markup=inline.get_employer_main_menu())
+
+    elif action == "history":
+        await callback.answer(Messages.EmployerMenu.LOADING_SESSIONS)
+        sessions = await api_client.employer_api_client.get_searches(emp_id)
+        if not sessions:
+            if callback.message.photo:
+                await callback.message.delete()
+                await callback.message.answer(
+                    Messages.EmployerMenu.SESSIONS_EMPTY,
+                    reply_markup=inline.get_employer_main_menu(),
+                )
+            else:
+                await callback.message.edit_text(
+                    Messages.EmployerMenu.SESSIONS_EMPTY,
+                    reply_markup=inline.get_employer_main_menu(),
+                )
+            return
+
+        text = Messages.EmployerMenu.SESSIONS_HEADER
+        kb = inline.get_sessions_keyboard(sessions)
+        if callback.message.photo:
+            await callback.message.delete()
+            await callback.message.answer(text, reply_markup=kb)
+        else:
+            await callback.message.edit_text(text, reply_markup=kb)
+
+    await callback.answer()
+
+
+@router.callback_query(inline.EmployerListAction.filter(), EmployerSearch.viewing_list)
+async def handle_list_pagination(
+    callback: CallbackQuery, callback_data: inline.EmployerListAction, state: FSMContext
+):
+    action = callback_data.action
+    index = callback_data.index
+
+    if action in ["prev", "next"]:
+        await show_list_candidate(callback, state, index)
+        await callback.answer()
+
+    elif action == "get_resume":
+        await callback.answer(Messages.EmployerSearch.FETCHING_LINK)
+        try:
+            data = await state.get_data()
+            cand = data["candidate_list"][index]
+            file_id = cand["resumes"][0]["file_id"]
+            link = await api_client.file_api_client.get_download_url_by_file_id(file_id)
+            if link:
+                kb = InlineKeyboardMarkup(
+                    inline_keyboard=[[InlineKeyboardButton(text="📥 Скачать файл", url=link)]]
+                )
+                await callback.message.answer(Messages.EmployerSearch.RESUME_LINK, reply_markup=kb)
+            else:
+                await callback.message.answer(Messages.EmployerSearch.RESUME_ERROR)
+        except Exception:
+            await callback.message.answer(Messages.EmployerSearch.RESUME_ERROR)
+
+
+@router.callback_query(inline.EmployerSessionAction.filter(), EmployerSearch.main_menu)
+async def handle_resume_session(
+    callback: CallbackQuery, callback_data: inline.EmployerSessionAction, state: FSMContext
+):
+    """Продолжить предыдущий поиск."""
+    session_id = callback_data.session_id
+
+    await callback.answer(Messages.EmployerSearch.SAVING)
+
+    await state.update_data(session_id=session_id)
+    await state.set_state(EmployerSearch.showing_results)
+
+    await show_next_candidate(callback, state)
+
+
 @router.message(Command("cancel"), StateFilter(EmployerSearch))
 async def cancel_search_handler(message: Message, state: FSMContext) -> None:
     await state.clear()

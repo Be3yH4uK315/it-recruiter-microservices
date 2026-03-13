@@ -1,28 +1,25 @@
 # File Service
 
-Микросервис управления файлами. Обеспечивает загрузку, скачивание и удаление файлов (резюме, аватары) с использованием S3/MinIO хранилища. Часть IT recruiter monorepo.
+Микросервис управления файлами (резюме, аватары). Обеспечивает загрузку, скачивание файлов через S3/MinIO с presigned URLs и метаданными в БД.
 
 ## Описание
 
 Основная функциональность:
-- **Загрузка файлов** в S3/MinIO с сохранением метаданных в БД
-- **Presigned URL**: генерация временных ссылок для скачивания без публичного доступа
-- **Удаление файлов**: безопасное удаление из S3 и БД
-- **Метаданные**: сохранение информации о размере, типе, владельце
-- **Типизация файлов**: разделение на группы (resumes, avatars и т.д.)
-- **Контроль доступа**: только владелец может удалить свой файл
+- **Загрузка файлов**: в S3/MinIO с сохранением метаданных (размер, тип, владелец)
+- **Валидация**: проверка файлов по Magic Bytes (не по расширению), поддержка PDF, JPEG, PNG
+- **Presigned URLs**: временные ссылки для скачивания/загрузки (TTL 1 час)
+- **Удаление файлов**: трансакционное удаление из S3 и БД с проверкой прав
+- **Типизация**: раздельное хранилище для резюме и аватаров (`{type}s/{telegram_id}/{uuid}.{ext}`)
+- **Контроль доступа**: только владелец файла может его удалить
+- **Domain rewriting**: поддержка CDN через S3_PUBLIC_DOMAIN конфиг
 
 ## Технологический стек
 
-- **Framework**: FastAPI 0.116.1
-- **Database**: PostgreSQL с SQLAlchemy ORM 2.0.28
-- **Async Driver**: asyncpg
-- **Object Storage**: S3/MinIO (aioboto3 10.4.0)
-- **File Upload**: python-multipart
-- **Observability**: 
-  - Prometheus (prometheus-fastapi-instrumentator)
-  - OpenTelemetry (OTLP exporter)
-  - Structlog для структурированного логирования
+- **Framework**: FastAPI 0.116.1, Uvicorn с UVLoop
+- **Database**: PostgreSQL 15 (SQLAlchemy 2.0.43 + asyncpg)
+- **Storage**: S3/MinIO (aioboto3 10.4.0)
+- **Security**: filetype для анализа Magic Bytes
+- **Observability**: Prometheus + OpenTelemetry + Structlog
 
 ## API Endpoints
 
@@ -32,7 +29,7 @@
 **Request (multipart/form-data)**:
 ```
 file: <binary>              # Сам файл
-file_type: "resume"         # Тип: "resume", "avatar" и т.д.
+file_type: "resume"         # Тип: "resume", "avatar"
 Authorization: Bearer <token>
 ```
 
@@ -50,10 +47,11 @@ Authorization: Bearer <token>
 **Логика**:
 1. Требует валидного JWT токена в заголовке Authorization
 2. Извлекает `owner_telegram_id` из токена
-3. Генерирует уникальный ID файла (UUID)
-4. Сохраняет в S3 с ключом: `{file_type}s/{telegram_id}/{uuid}.{ext}`
-5. Записывает метаданные в БД (PostgreSQL)
-6. Возвращает ID файла и информацию
+3. Читает первые 2048 байт (Magic Bytes) и проверяет, что файл действительно является изображением (JPG/PNG) или документом (PDF/DOCX).
+4. Генерирует уникальный ID файла (UUID)
+5. Сохраняет в S3 с ключом: `{file_type}s/{telegram_id}/{uuid}.{ext}`
+6. Записывает метаданные в БД (PostgreSQL)
+7. Возвращает ID файла и информацию
 
 **Примеры использования**:
 

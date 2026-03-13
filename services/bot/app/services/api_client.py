@@ -1,6 +1,6 @@
 import logging
 from datetime import date
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 import httpx
@@ -104,18 +104,17 @@ def serialize_dates(obj: Any) -> Any:
 class BaseClient:
     """Base class for API clients."""
 
-    def __init__(self, base_url: str, timeout: float = 10.0):
+    def __init__(self, base_url: str, default_role: str = "candidate", timeout: float = 10.0):
         self.base_url = base_url
+        self.default_role = default_role
         self.timeout = httpx.Timeout(timeout, connect=5.0)
         self.default_headers = {"Content-Type": "application/json"}
 
-    async def _get_headers(self, user_telegram_id: int | None = None) -> dict[str, str]:
-        """
-        Получить заголовки с токеном авторизации, если user_telegram_id предоставлен.
-        """
+    async def _get_headers(self, user_telegram_id: Optional[int] = None) -> dict[str, str]:
+        """Получить заголовки с токеном авторизации."""
         headers = self.default_headers.copy()
         if user_telegram_id:
-            token = await auth_manager.get_token(user_telegram_id)
+            token = await auth_manager.get_token(user_telegram_id, role=self.default_role)
             if token:
                 headers["Authorization"] = f"Bearer {token}"
             else:
@@ -123,7 +122,6 @@ class BaseClient:
         return headers
 
     async def _request(self, method: str, url: str, **kwargs) -> httpx.Response:
-        """Сделать HTTP-запрос с использованием общего HTTP-клиента."""
         if not resources.http_client:
             raise RuntimeError("HTTP client not initialized. Check startup sequence.")
 
@@ -143,7 +141,9 @@ class BaseClient:
 
 class CandidateAPIClient(BaseClient):
     def __init__(self):
-        super().__init__(f"{settings.CANDIDATE_SERVICE_URL}/candidates", timeout=15.0)
+        super().__init__(
+            f"{settings.CANDIDATE_SERVICE_URL}/candidates", default_role="candidate", timeout=15.0
+        )
 
     @retry_api_call()
     async def register_candidate_profile(self, profile_data: dict) -> dict[str, Any]:
@@ -291,6 +291,22 @@ class CandidateAPIClient(BaseClient):
                 return True
             raise APIHTTPError(e.response.status_code, e.response.text)
 
+    @retry_api_call()
+    async def get_statistics(self, telegram_id: int) -> dict:
+        """Получить статистику кандидата."""
+        headers = await self._get_headers(telegram_id)
+        try:
+            response = await self._request(
+                "GET",
+                f"{self.base_url}/by-telegram/{telegram_id}/statistics",
+                headers=headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            raise APIHTTPError(e.response.status_code, e.response.text)
+
 
 # ============================================================================
 # EMPLOYER API CLIENT
@@ -299,7 +315,9 @@ class CandidateAPIClient(BaseClient):
 
 class EmployerAPIClient(BaseClient):
     def __init__(self):
-        super().__init__(f"{settings.EMPLOYER_SERVICE_URL}/employers", timeout=20.0)
+        super().__init__(
+            f"{settings.EMPLOYER_SERVICE_URL}/employers", default_role="employer", timeout=20.0
+        )
 
     @retry_api_call()
     async def get_or_create_employer(self, telegram_id: int, username: str) -> dict[str, Any]:
@@ -464,6 +482,56 @@ class EmployerAPIClient(BaseClient):
         except httpx.HTTPStatusError as e:
             raise APIHTTPError(e.response.status_code, e.response.text)
 
+    @retry_api_call()
+    async def get_favorites(self, employer_id: str) -> list[dict]:
+        """Получить избранных кандидатов."""
+        url = f"{self.base_url}/{employer_id}/favorites"
+        try:
+            response = await self._request(
+                "GET", url, headers=self.default_headers, timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            raise APIHTTPError(e.response.status_code, e.response.text)
+
+    @retry_api_call()
+    async def get_unlocked_contacts(self, employer_id: str) -> list[dict]:
+        """Получить кандидатов с открытыми контактами."""
+        url = f"{self.base_url}/{employer_id}/unlocked-contacts"
+        try:
+            response = await self._request(
+                "GET", url, headers=self.default_headers, timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            raise APIHTTPError(e.response.status_code, e.response.text)
+
+    @retry_api_call()
+    async def get_searches(self, employer_id: str) -> list[dict]:
+        url = f"{self.base_url}/{employer_id}/searches"
+        try:
+            resp = await self._request(
+                "GET", url, headers=self.default_headers, timeout=self.timeout
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as e:
+            raise APIHTTPError(e.response.status_code, e.response.text)
+
+    @retry_api_call()
+    async def get_statistics(self, employer_id: str) -> dict:
+        url = f"{self.base_url}/{employer_id}/statistics"
+        try:
+            resp = await self._request(
+                "GET", url, headers=self.default_headers, timeout=self.timeout
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as e:
+            raise APIHTTPError(e.response.status_code, e.response.text)
+
 
 # ============================================================================
 # FILE API CLIENT
@@ -472,7 +540,9 @@ class EmployerAPIClient(BaseClient):
 
 class FileAPIClient(BaseClient):
     def __init__(self):
-        super().__init__(f"{settings.FILE_SERVICE_URL}/files", timeout=60.0)
+        super().__init__(
+            f"{settings.FILE_SERVICE_URL}/files", default_role="candidate", timeout=60.0
+        )
 
     @retry_api_call()
     async def upload_file(
@@ -562,7 +632,7 @@ class FileAPIClient(BaseClient):
 
 class SearchAPIClient(BaseClient):
     def __init__(self):
-        super().__init__(f"{settings.SEARCH_SERVICE_URL}/search", timeout=5.0)
+        super().__init__(f"{settings.SEARCH_SERVICE_URL}/search", default_role="admin", timeout=5.0)
 
     @retry_api_call()
     async def trigger_reindex(self, admin_tg_id: int) -> bool:

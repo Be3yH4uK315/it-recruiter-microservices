@@ -6,6 +6,7 @@ import structlog
 from app.core.config import settings
 from app.core.resources import resources
 from app.models.search import SearchFilters
+from app.utils.currency import normalize_to_rub
 
 logger = structlog.get_logger()
 
@@ -50,109 +51,68 @@ class RankerService:
         """
         factors = {"ml_score": round(ml_score, 4)}
 
+        req_skills = filters.must_skills + (filters.nice_skills or [])
+        cand_skills = candidate.get("skills", [])
+        cand_skill_map = {
+            s["skill"]: s.get("level", 3) if isinstance(s, dict) else 3 
+            for s in cand_skills
+        }
+        
         skill_factor = 1.0
-
-        cand_skills_dict = {}
-        for s in candidate.get("skills", []):
-            if isinstance(s, dict) and "skill" in s and "level" in s:
-                cand_skills_dict[s["skill"].lower()] = float(s["level"])
-
-        if filters.must_skills:
-            matched_score = 0.0
-            for req_obj in filters.must_skills:
-                req_skill = req_obj["skill"]
-                req_level = float(req_obj["level"])
-
-                if req_skill in cand_skills_dict:
-                    cand_level = cand_skills_dict[req_skill]
-
-                    if cand_level >= req_level:
-                        item_score = 1.0 + (cand_level - req_level) * 0.1
-                    else:
-                        item_score = 1.0 - (req_level - cand_level) * 0.2
-
-                    matched_score += item_score
-
-            avg_match = matched_score / len(filters.must_skills)
-            skill_factor = settings.FACTOR_NO_SKILLS + (
-                (1.0 - settings.FACTOR_NO_SKILLS) * avg_match
-            )
-
-        if filters.nice_skills:
-            nice_bonus = 0.0
-            for req_obj in filters.nice_skills:
-                req_skill = req_obj["skill"]
-                req_level = float(req_obj["level"])
-
-                if req_skill in cand_skills_dict:
-                    cand_level = cand_skills_dict[req_skill]
-                    if cand_level >= req_level:
-                        nice_bonus += 0.1 + (cand_level - req_level) * 0.05
-                    else:
-                        nice_bonus += 0.05
-
-            skill_factor = min(1.5, skill_factor + nice_bonus)
-
+        if req_skills:
+            match_count = 0
+            penalty = 0.0
+            for rs in req_skills:
+                skill_name = rs["skill"]
+                req_lvl = rs.get("level", 3)
+                if skill_name in cand_skill_map:
+                    match_count += 1
+                    cand_lvl = cand_skill_map[skill_name]
+                    if cand_lvl < req_lvl:
+                        penalty += (req_lvl - cand_lvl) * 0.15
+            
+            coverage = match_count / len(req_skills)
+            skill_factor = coverage * (1.0 - penalty)
+            skill_factor = max(settings.FACTOR_NO_SKILLS, skill_factor)
+        
         factors["skill_factor"] = round(skill_factor, 2)
 
         exp_factor = 1.0
         cand_exp = candidate.get("experience_years", 0)
-
-        if filters.experience_min is not None and cand_exp < filters.experience_min:
-            diff = filters.experience_min - cand_exp
-            exp_factor = max(0.5, 1.0 - (diff * 0.15))
-        elif filters.experience_max is not None and cand_exp > filters.experience_max:
-            diff = cand_exp - filters.experience_max
-            exp_factor = max(0.8, 1.0 - (diff * 0.05))
-
+        req_min_exp = filters.experience_min or 0
+        if cand_exp < req_min_exp:
+            diff = req_min_exp - cand_exp
+            exp_factor = max(settings.FACTOR_EXP_MISMATCH, 1.0 - (diff * 0.2))
         factors["exp_factor"] = round(exp_factor, 2)
 
-        loc_factor = 1.0
+        loc_factor = settings.FACTOR_LOCATION_MATCH
+        req_loc = (filters.location or "").lower()
+        cand_loc = (candidate.get("location") or "").lower()
+        is_city_match = (req_loc == cand_loc) and bool(req_loc)
 
-        emp_location = (filters.location or "").lower().strip()
-        cand_location = (candidate.get("location") or "").lower().strip()
+        req_modes = filters.work_modes or []
+        cand_modes = candidate.get("work_modes") or []
 
-        emp_modes = set(filters.work_modes or [])
-        cand_modes = set(candidate.get("work_modes", []))
-
-        is_city_match = False
-        if not emp_location or not cand_location:
-            is_city_match = True
-        elif emp_location in cand_location or cand_location in emp_location:
-            is_city_match = True
-
-        emp_allows_remote = "remote" in emp_modes or not emp_modes
-        cand_wants_remote = "remote" in cand_modes or not cand_modes
+        is_remote_req = "remote" in [m.lower() for m in req_modes]
+        is_remote_cand = "remote" in [m.lower() for m in cand_modes]
 
         if is_city_match:
-            if emp_modes and cand_modes and not emp_modes.intersection(cand_modes):
-                loc_factor = 0.6
-            else:
-                loc_factor = 1.1
-
-        else:
-            if emp_allows_remote and cand_wants_remote:
-                loc_factor = 1.0
-            else:
-                loc_factor = 0.3
-
-        factors["loc_factor"] = loc_factor
-
-        def normalize_salary_to_rub(amount: float, currency: str) -> float:
-            rates = {"USD": 95.0, "EUR": 105.0, "RUB": 1.0}
-            return amount * rates.get((currency or "RUB").upper(), 1.0)
+            loc_factor = 1.15 if is_remote_req and is_remote_cand else 1.0
+        elif is_remote_req and (is_remote_cand or not cand_modes):
+            loc_factor = 1.0
+        
+        factors["loc_factor"] = round(loc_factor, 2)
 
         sal_factor = 1.0
-        cand_sal = candidate.get("salary_min")
-        emp_sal = filters.salary_max
+        cand_sal_rub = normalize_to_rub(candidate.get("salary_min"), candidate.get("currency"))
+        emp_sal_rub = normalize_to_rub(filters.salary_max, filters.currency)
 
-        if cand_sal is not None and emp_sal is not None:
-            cand_sal_rub = normalize_salary_to_rub(cand_sal, candidate.get("currency", "RUB"))
-            emp_sal_rub = normalize_salary_to_rub(emp_sal, filters.currency or "RUB")
-
-            if cand_sal_rub > emp_sal_rub:
+        if emp_sal_rub and cand_sal_rub:
+            if cand_sal_rub <= emp_sal_rub:
+                sal_factor = 1.0
+            else:
                 ratio = cand_sal_rub / emp_sal_rub
-                sal_factor = max(0.5, 1.0 - (ratio - 1.0))
+                sal_factor = max(0.6, 1.0 - ((ratio - 1.0) * 0.6))
 
         factors["sal_factor"] = round(sal_factor, 2)
 
@@ -160,15 +120,14 @@ class RankerService:
         if filters.english_level:
             levels = {"A1": 1, "A2": 2, "B1": 3, "B2": 4, "C1": 5, "C2": 6}
             req_lvl = levels.get(filters.english_level.upper(), 0)
-
             cand_lvl_str = candidate.get("english_level")
             cand_lvl = levels.get(cand_lvl_str.upper() if cand_lvl_str else "", 0)
 
             if cand_lvl == 0:
-                eng_factor = 0.8
+                eng_factor = 0.9
             elif cand_lvl < req_lvl:
                 diff = req_lvl - cand_lvl
-                eng_factor = max(0.5, 1.0 - (diff * 0.15))
+                eng_factor = max(0.6, 1.0 - (diff * 0.15))
             elif cand_lvl > req_lvl:
                 eng_factor = 1.05
         factors["eng_factor"] = round(eng_factor, 2)
@@ -180,14 +139,32 @@ class RankerService:
         parts = []
         if r := cand.get("headline_role"):
             parts.append(f"Role: {r}")
-        if s := cand.get("skills"):
-            s_str = ", ".join(s) if isinstance(s[0], str) else ", ".join(x["skill"] for x in s)
-            parts.append(f"Skills: {s_str}")
-        if e := cand.get("education_text"):
-            parts.append(f"Edu: {e}")
-        if a := cand.get("about_me"):
-            parts.append(f"About: {a}")
+        
+        skills = cand.get("skills", [])
+        if skills:
+            if isinstance(skills[0], dict):
+                skill_names = ", ".join([s["skill"] for s in skills])
+            else:
+                skill_names = ", ".join(skills)
+            parts.append(f"Skills: {skill_names}")
+            
+        if e := cand.get("experience_years"):
+            parts.append(f"Experience: {e} years")
+        
+        experiences = cand.get("experiences", [])
+        if experiences:
+            exp_texts = []
+            for exp in experiences:
+                pos = exp.get("position", "")
+                resp = exp.get("responsibilities", "")
+                if pos or resp:
+                    exp_texts.append(f"{pos}: {resp}")
+            if exp_texts:
+                parts.append("Work history: " + " | ".join(exp_texts))
 
+        if ab := cand.get("about_me"):
+            parts.append(f"About: {ab}")
+            
         return ". ".join(parts)
 
 

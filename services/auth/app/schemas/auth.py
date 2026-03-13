@@ -9,13 +9,10 @@ class BotLoginRequest(BaseModel):
     telegram_id: int
     username: str | None = None
     bot_secret: str
+    role: UserRole | None = None
 
 
 class TelegramLoginData(BaseModel):
-    """
-    Данные, которые приходят от Telegram.
-    """
-
     id: int
     first_name: str
     last_name: str | None = None
@@ -23,6 +20,7 @@ class TelegramLoginData(BaseModel):
     photo_url: str | None = None
     auth_date: int
     hash: str
+    role: UserRole | None = None
 
 
 class TokenResponse(BaseModel):
@@ -42,4 +40,8 @@ class UserResponse(BaseModel):
 
 
 class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
     refresh_token: str

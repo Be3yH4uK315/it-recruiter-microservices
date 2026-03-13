@@ -64,14 +64,16 @@ class OutboxWorker:
                     msg.error_log = str(e)[:500]
 
                     if msg.retry_count >= MAX_RETRIES:
-                        logger.error(f"Message {msg.id} failed max retries. Moving to DLQ.")
+                        logger.error(
+                            f"Message {msg.id} failed max retries. Moving to failed state."
+                        )
+                        msg.status = "failed"
                         try:
                             await publisher.publish_dlq(
                                 routing_key=msg.routing_key,
                                 message_body=body_bytes,
                                 error_info=str(e),
                             )
-                            msg.status = "failed"
                         except Exception as dlq_error:
                             logger.critical(f"Failed to move to DLQ! Data danger! {dlq_error}")
 

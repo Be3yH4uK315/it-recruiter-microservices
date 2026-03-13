@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import and_, select, update
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -120,3 +120,109 @@ class EmployerRepository:
         )
         result = await self.session.execute(query)
         return result.first()
+
+    async def get_favorites(self, employer_id: UUID) -> list[UUID]:
+        """Возвращает список ID кандидатов, которых лайкнул этот HR (уникальные)."""
+        query = (
+            select(models.Decision.candidate_id)
+            .join(models.SearchSession, models.Decision.session_id == models.SearchSession.id)
+            .where(
+                and_(
+                    models.SearchSession.employer_id == employer_id,
+                    models.Decision.decision == models.DecisionType.LIKE,
+                )
+            )
+            .distinct()
+        )
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
+    async def get_unlocked_contacts(self, employer_id: UUID) -> list[UUID]:
+        """Возвращает список ID кандидатов, контакты которых открыты этому HR."""
+        query = (
+            select(models.ContactsRequest.candidate_id)
+            .where(
+                and_(
+                    models.ContactsRequest.employer_id == employer_id,
+                    models.ContactsRequest.granted,
+                )
+            )
+            .distinct()
+        )
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
+    async def get_sessions_by_employer(
+        self, employer_id: UUID, limit: int = 10
+    ) -> list[models.SearchSession]:
+        """Возвращает последние поисковые сессии HR'а."""
+        query = (
+            select(models.SearchSession)
+            .where(models.SearchSession.employer_id == employer_id)
+            .order_by(models.SearchSession.created_at.desc())
+            .limit(limit)
+        )
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
+    async def get_statistics(self, employer_id: UUID) -> dict:
+        """Считает воронку рекрутмента для конкретного HR."""
+        viewed_q = (
+            select(func.count(models.Decision.id))
+            .join(models.SearchSession, models.Decision.session_id == models.SearchSession.id)
+            .where(models.SearchSession.employer_id == employer_id)
+        )
+
+        liked_q = (
+            select(func.count(models.Decision.id))
+            .join(models.SearchSession, models.Decision.session_id == models.SearchSession.id)
+            .where(
+                and_(
+                    models.SearchSession.employer_id == employer_id,
+                    models.Decision.decision == models.DecisionType.LIKE,
+                )
+            )
+        )
+
+        req_q = select(func.count(models.ContactsRequest.id)).where(
+            models.ContactsRequest.employer_id == employer_id
+        )
+
+        granted_q = select(func.count(models.ContactsRequest.id)).where(
+            and_(models.ContactsRequest.employer_id == employer_id, models.ContactsRequest.granted)
+        )
+
+        viewed = (await self.session.execute(viewed_q)).scalar() or 0
+        liked = (await self.session.execute(liked_q)).scalar() or 0
+        requests = (await self.session.execute(req_q)).scalar() or 0
+        granted = (await self.session.execute(granted_q)).scalar() or 0
+
+        return {
+            "total_viewed": viewed,
+            "total_liked": liked,
+            "total_contact_requests": requests,
+            "total_contacts_granted": granted,
+        }
+
+    async def get_candidate_statistics(self, candidate_id: UUID) -> dict:
+        """Считает воронку для конкретного кандидата."""
+        views_q = select(func.count(models.Decision.id)).where(
+            models.Decision.candidate_id == candidate_id
+        )
+
+        likes_q = select(func.count(models.Decision.id)).where(
+            and_(
+                models.Decision.candidate_id == candidate_id,
+                models.Decision.decision == models.DecisionType.LIKE,
+            )
+        )
+
+        req_q = select(func.count(models.ContactsRequest.id)).where(
+            models.ContactsRequest.candidate_id == candidate_id
+        )
+
+        views = (await self.session.execute(views_q)).scalar() or 0
+        likes = (await self.session.execute(likes_q)).scalar() or 0
+        reqs = (await self.session.execute(req_q)).scalar() or 0
+
+        return {"total_views": views, "total_likes": likes, "total_contact_requests": reqs}

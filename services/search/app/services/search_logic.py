@@ -9,6 +9,7 @@ from app.models.search import CandidatePreview, SearchFilters
 from app.services.indexer import indexer
 from app.services.milvus_client import milvus_client
 from app.services.ranker import ranker
+from app.utils.currency import normalize_to_rub
 
 logger = structlog.get_logger()
 
@@ -140,12 +141,19 @@ class SearchEngine:
         return " ".join(parts)
 
     def _build_es_query(self, filters: SearchFilters) -> dict:
-        must = [{"term": {"status": "active"}}]
-        must_not = []
+        must = []
         should = []
+        must_not = []
+        filter_clauses = []
 
-        if filters.exclude_ids:
-            must_not.append({"ids": {"values": [str(uid) for uid in filters.exclude_ids]}})
+        if filters.role:
+            must.append({"match": {"headline_role": {"query": filters.role}}})
+
+        for skill_obj in filters.must_skills:
+            filter_clauses.append({"term": {"skills.skill": skill_obj["skill"]}})
+        
+        for skill_obj in filters.nice_skills or []:
+            should.append({"term": {"skills.skill": {"value": skill_obj["skill"], "boost": 2}}})
 
         if filters.location:
             if "remote" in (filters.work_modes or []):
@@ -154,39 +162,51 @@ class SearchEngine:
                 must.append({"match": {"location": {"query": filters.location}}})
 
         if filters.work_modes:
-            must.append({"terms": {"work_modes": filters.work_modes}})
+            filter_clauses.append({
+                "bool": {
+                    "should": [
+                        {"terms": {"work_modes": filters.work_modes}},
+                        {"bool": {"must_not": {"exists": {"field": "work_modes"}}}}
+                    ],
+                    "minimum_should_match": 1
+                }
+            })
 
         exp_range = {}
         if filters.experience_min is not None:
             exp_range["gte"] = max(0, filters.experience_min - 1)
         if filters.experience_max is not None:
             exp_range["lte"] = filters.experience_max + 2
-
         if exp_range:
-            must.append({"range": {"experience_years": exp_range}})
+            filter_clauses.append({"range": {"experience_years": exp_range}})
 
-        if filters.role:
-            should.append({"match": {"headline_role": {"query": filters.role, "boost": 5}}})
-
-        for skill_obj in filters.must_skills:
-            should.append({"match": {"skills.skill": {"query": skill_obj["skill"], "boost": 4}}})
-
-        for skill_obj in filters.nice_skills or []:
-            should.append({"match": {"skills.skill": {"query": skill_obj["skill"], "boost": 2}}})
+        if filters.salary_max is not None:
+            max_rub = normalize_to_rub(filters.salary_max, filters.currency)
+            
+            filter_clauses.append({
+                "bool": {
+                    "should": [
+                        {"range": {"salary_min_rub": {"lte": max_rub}}},
+                        {"bool": {"must_not": {"exists": {"field": "salary_min_rub"}}}}
+                    ],
+                    "minimum_should_match": 1
+                }
+            })
 
         if filters.english_level:
             should.append({"term": {"english_level": {"value": filters.english_level, "boost": 1}}})
 
-        bool_query = {
+        if filters.exclude_ids:
+            must_not.append({"terms": {"_id": [str(uid) for uid in filters.exclude_ids]}})
+        
+        return {
             "bool": {
                 "must": must,
                 "should": should,
-                "must_not": must_not,
-                "minimum_should_match": 1 if should else 0,
+                "filter": filter_clauses,
+                "must_not": must_not
             }
         }
-
-        return bool_query
 
 
 search_engine = SearchEngine()

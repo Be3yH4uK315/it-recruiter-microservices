@@ -1,7 +1,14 @@
 from datetime import datetime
+from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
+
+
+class FileTypeEnum(str, Enum):
+    AVATAR = "avatar"
+    RESUME = "resume"
+    DOCUMENT = "document"
 
 
 class FileResponse(BaseModel):
@@ -16,3 +23,14 @@ class FileResponse(BaseModel):
 
 class DownloadUrlResponse(BaseModel):
     download_url: str
+
+
+class UploadUrlRequest(BaseModel):
+    filename: str
+    content_type: str
+
+
+class UploadUrlResponse(BaseModel):
+    upload_url: str
+    object_key: str
+    expires_in: int
