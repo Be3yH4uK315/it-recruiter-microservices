@@ -20,6 +20,50 @@ class BotSearchWizardMessagesMixin:
             return str(int(value))
         return str(value)
 
+    def _format_search_experience_range_text(
+        self,
+        min_value: object | None,
+        max_value: object | None,
+    ) -> str:
+        if min_value is None and max_value is None:
+            return "—"
+        if min_value is not None and max_value is None:
+            return f"от {self._format_search_experience_value(min_value)}"
+        if min_value is None and max_value is not None:
+            return f"до {self._format_search_experience_value(max_value)}"
+        return (
+            f"{self._format_search_experience_value(min_value)} – "
+            f"{self._format_search_experience_value(max_value)}"
+        )
+
+    def _format_search_salary_range_text(
+        self,
+        min_value: object | None,
+        max_value: object | None,
+        currency: object | None,
+    ) -> str:
+        if min_value is None and max_value is None:
+            return "—"
+
+        def _format_amount(value: object | None) -> str:
+            if isinstance(value, int):
+                return self._format_number_with_spaces(value)
+            if value is None:
+                return "—"
+            return str(value)
+
+        currency_code = str(currency or "").strip().upper()
+        currency_symbol = CURRENCY_SYMBOLS.get(currency_code, currency_code)
+        if min_value is not None and max_value is None:
+            text = f"от {_format_amount(min_value)}"
+        elif min_value is None and max_value is not None:
+            text = f"до {_format_amount(max_value)}"
+        else:
+            text = f"{_format_amount(min_value)} – {_format_amount(max_value)}"
+        if currency_symbol:
+            text = f"{text} {currency_symbol}"
+        return text
+
     def _build_employer_search_filters_summary(self, payload: dict) -> str:
         title = str(payload.get("title", "")).strip()
         role = str(payload.get("role", "")).strip()
@@ -42,34 +86,15 @@ class BotSearchWizardMessagesMixin:
         about_me = payload.get("about_me")
         must_skills_text = self._format_search_skills_for_summary(must_skills)
         nice_skills_text = self._format_search_skills_for_summary(nice_skills)
-        salary_text = "—"
-        currency_code = str(currency or "").strip().upper()
-        currency_symbol = CURRENCY_SYMBOLS.get(currency_code, currency_code)
-        if salary_min is not None or salary_max is not None:
-            min_text = (
-                self._format_number_with_spaces(int(salary_min))
-                if isinstance(salary_min, int)
-                else str(salary_min if salary_min is not None else "—")
-            )
-            max_text = (
-                self._format_number_with_spaces(int(salary_max))
-                if isinstance(salary_max, int)
-                else str(salary_max if salary_max is not None else "—")
-            )
-            salary_text = f"{min_text} – {max_text}"
-            if currency_symbol:
-                salary_text = f"{salary_text} {currency_symbol}"
+        salary_text = self._format_search_salary_range_text(salary_min, salary_max, currency)
         about_text = str(about_me).strip() if about_me is not None else ""
         if len(about_text) > 180:
             about_text = f"{about_text[:180].rstrip()}…"
         work_modes_text = ", ".join(
             self._humanize_work_mode(str(item)) for item in work_modes if str(item).strip()
         )
-        experience_min_text = self._escape_markdown_text(
-            self._format_search_experience_value(experience_min)
-        )
-        experience_max_text = self._escape_markdown_text(
-            self._format_search_experience_value(experience_max)
+        experience_text = self._escape_markdown_text(
+            self._format_search_experience_range_text(experience_min, experience_max)
         )
 
         return (
@@ -78,7 +103,7 @@ class BotSearchWizardMessagesMixin:
             f"💼 *Роль:* {self._escape_markdown_text(role or '—')}\n\n"
             f"🧠 *Обязательные навыки:* {self._escape_markdown_text(must_skills_text)}\n"
             f"🛠 *Желательные навыки:* {self._escape_markdown_text(nice_skills_text)}\n"
-            f"📈 *Опыт:* {experience_min_text} – {experience_max_text}\n"
+            f"📈 *Опыт:* {experience_text}\n"
             f"📍 *Локация:* {self._escape_markdown_text(location or '—')}\n"
             f"💻 *Формат работы:* {self._escape_markdown_text(work_modes_text or '—')}\n"
             f"💰 *Зарплата:* {self._escape_markdown_text(salary_text)}\n"
@@ -133,11 +158,8 @@ class BotSearchWizardMessagesMixin:
         if step == "experience":
             min_value = payload.get("experience_min")
             max_value = payload.get("experience_max")
-            if min_value is None and max_value is None:
-                return "—"
-            return (
-                f"{self._escape_markdown_text(self._format_search_experience_value(min_value))} – "
-                f"{self._escape_markdown_text(self._format_search_experience_value(max_value))}"
+            return self._escape_markdown_text(
+                self._format_search_experience_range_text(min_value, max_value)
             )
         if step == "location":
             return self._escape_markdown_text(payload.get("location") or "—")
@@ -155,22 +177,8 @@ class BotSearchWizardMessagesMixin:
             salary_min = payload.get("salary_min")
             salary_max = payload.get("salary_max")
             currency = payload.get("currency")
-            if salary_min is None and salary_max is None:
-                return "—"
-            currency_code = str(currency or "").strip().upper()
-            currency_symbol = CURRENCY_SYMBOLS.get(currency_code, currency_code)
-            min_text = (
-                self._format_number_with_spaces(int(salary_min))
-                if isinstance(salary_min, int)
-                else str(salary_min if salary_min is not None else "—")
-            )
-            max_text = (
-                self._format_number_with_spaces(int(salary_max))
-                if isinstance(salary_max, int)
-                else str(salary_max if salary_max is not None else "—")
-            )
             return self._escape_markdown_text(
-                (f"{min_text} – {max_text} " f"{currency_symbol}").rstrip()
+                self._format_search_salary_range_text(salary_min, salary_max, currency)
             )
         if step == "english":
             return self._escape_markdown_text(payload.get("english_level") or "—")

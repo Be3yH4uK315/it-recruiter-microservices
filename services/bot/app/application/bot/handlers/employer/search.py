@@ -676,8 +676,7 @@ class EmployerSearchHandlersMixin:
                 chat_id=chat_id,
                 text=(
                     "Кабинет работодателя > Поиск > Новый поиск\n\n🧭 Мастер поиска\n\n"
-                    "Диапазон опыта в формате `min-max`, например `2-5`. "
-                    "Отправь `-`, чтобы пропустить."
+                    f"{self._build_search_experience_prompt()}"
                 ),
                 parse_mode="Markdown",
                 reply_markup=await self._build_employer_search_wizard_controls_markup(
@@ -759,8 +758,7 @@ class EmployerSearchHandlersMixin:
                 chat_id=chat_id,
                 text=(
                     "Кабинет работодателя > Поиск > Новый поиск\n\n🧭 Мастер поиска\n\n"
-                    "Введи зарплатный диапазон: `min max currency`, например `150000 250000 RUB`.\n"
-                    "Отправь `-`, чтобы пропустить."
+                    f"{self._build_search_salary_prompt()}"
                 ),
                 parse_mode="Markdown",
                 reply_markup=await self._build_employer_search_wizard_controls_markup(
@@ -940,8 +938,7 @@ class EmployerSearchHandlersMixin:
             chat_id=self._resolve_chat_id(callback, actor),
             text=(
                 "Кабинет работодателя > Поиск > Новый поиск\n\n🧭 Мастер поиска\n\n"
-                "Введи зарплатный диапазон: `min max currency`, например `150000 250000 RUB`.\n"
-                "Отправь `-`, чтобы пропустить."
+                f"{self._build_search_salary_prompt()}"
             ),
             parse_mode="Markdown",
             reply_markup=await self._build_employer_search_wizard_controls_markup(

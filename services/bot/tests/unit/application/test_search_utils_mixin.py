@@ -57,6 +57,11 @@ def test_parse_search_skill_list_valid_and_invalid() -> None:
 
 def test_parse_search_experience_range() -> None:
     assert SearchUtilsMixin._parse_search_experience_range("2-5") == (2.0, 5.0)
+    assert SearchUtilsMixin._parse_search_experience_range("2-") == (2.0, None)
+    assert SearchUtilsMixin._parse_search_experience_range("-5") == (None, 5.0)
+    assert SearchUtilsMixin._parse_search_experience_range("от 2") == (2.0, None)
+    assert SearchUtilsMixin._parse_search_experience_range("до 5") == (None, 5.0)
+    assert SearchUtilsMixin._parse_search_experience_range("от 2 до 5") == (2.0, 5.0)
     assert SearchUtilsMixin._parse_search_experience_range("-") == (None, None)
     assert SearchUtilsMixin._parse_search_experience_range("2") is None
     assert SearchUtilsMixin._parse_search_experience_range("5-2") is None
@@ -75,7 +80,15 @@ def test_parse_search_work_modes() -> None:
 def test_parse_search_salary() -> None:
     assert SearchUtilsMixin._parse_search_salary("100000 200000 rub") == (100000, 200000, "RUB")
     assert SearchUtilsMixin._parse_search_salary("100000-200000 USD") == (100000, 200000, "USD")
+    assert SearchUtilsMixin._parse_search_salary("от 100000 rub") == (100000, None, "RUB")
+    assert SearchUtilsMixin._parse_search_salary("до 200000 usd") == (None, 200000, "USD")
+    assert SearchUtilsMixin._parse_search_salary("от 100000 до 200000 eur") == (
+        100000,
+        200000,
+        "EUR",
+    )
     assert SearchUtilsMixin._parse_search_salary("-") == (None, None, None)
+    assert SearchUtilsMixin._parse_search_salary("100000") is None
     assert SearchUtilsMixin._parse_search_salary("100-50") is None
     assert SearchUtilsMixin._parse_search_salary("100 aaa") is None
 
@@ -119,8 +132,8 @@ def test_parse_search_english_level() -> None:
 @pytest.mark.parametrize(
     ("payload", "expected_substring"),
     [
-        ({"title": "", "role": "Python"}, "Заполни название поиска"),
-        ({"title": "A", "role": ""}, "Заполни роль"),
+        ({"title": "", "role": "Python"}, "Введи название поиска"),
+        ({"title": "A", "role": ""}, "Введи роль"),
         ({"title": "x" * (EMPLOYER_SEARCH_TITLE_MAX_LEN + 1), "role": "R"}, "слишком длинное"),
         ({"title": "T", "role": "x" * (EMPLOYER_SEARCH_ROLE_MAX_LEN + 1)}, "слишком длинная"),
         ({"title": "T", "role": "R", "must_skills": "bad"}, "Список навыков"),

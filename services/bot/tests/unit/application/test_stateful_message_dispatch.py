@@ -455,8 +455,8 @@ async def test_employer_search_numeric_and_skill_steps(
     valid_text = {
         STATE_EMPLOYER_SEARCH_MUST_SKILLS: "Python:4, FastAPI",
         STATE_EMPLOYER_SEARCH_NICE_SKILLS: "Docker, AWS:3",
-        STATE_EMPLOYER_SEARCH_EXPERIENCE: "2-5",
-        STATE_EMPLOYER_SEARCH_SALARY: "150000 250000 RUB",
+        STATE_EMPLOYER_SEARCH_EXPERIENCE: "от 2",
+        STATE_EMPLOYER_SEARCH_SALARY: "до 250000 RUB",
     }[state_key]
 
     saved = await sut._handle_stateful_message(

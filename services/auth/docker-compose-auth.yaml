@@ -23,6 +23,9 @@ services:
     image: rabbitmq:3-management
     container_name: auth_rabbitmq
     restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: app
+      RABBITMQ_DEFAULT_PASS: app
     ports:
       - "5673:5672"
       - "15673:15672"

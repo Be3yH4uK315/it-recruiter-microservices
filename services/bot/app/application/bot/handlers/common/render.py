@@ -4,6 +4,8 @@ from app.application.bot.constants import WIZARD_SCREEN_MESSAGE_ID_KEY
 from app.application.common.telegram_api import TelegramApiError
 from app.schemas.telegram import TelegramCallbackQuery, TelegramUser
 
+TELEGRAM_PHOTO_CAPTION_MAX_LEN = 1024
+
 
 class RenderUtilsMixin:
     async def _render_callback_screen(
@@ -47,7 +49,7 @@ class RenderUtilsMixin:
         fallback_photo_caption: str = "🖼 Аватар профиля",
     ) -> None:
         normalized_photo_url = (photo_url or "").strip()
-        if not normalized_photo_url:
+        if not normalized_photo_url or len(text) > TELEGRAM_PHOTO_CAPTION_MAX_LEN:
             await self._render_callback_screen(
                 callback=callback,
                 actor=actor,
@@ -57,12 +59,18 @@ class RenderUtilsMixin:
             )
             return
 
+        send_primary_photo = getattr(self._telegram_client, "send_primary_photo", None)
+        if send_primary_photo is None:
+            send_primary_photo = self._telegram_client.send_photo
         try:
-            await self._telegram_client.send_photo(
+            await send_primary_photo(
                 chat_id=self._resolve_chat_id(callback, actor),
                 photo=normalized_photo_url,
-                caption=fallback_photo_caption,
+                caption=text,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode,
             )
+            return
         except TelegramApiError:
             await self._render_callback_screen(
                 callback=callback,
@@ -72,14 +80,6 @@ class RenderUtilsMixin:
                 parse_mode=parse_mode,
             )
             return
-
-        await self._render_callback_screen(
-            callback=callback,
-            actor=actor,
-            text=text,
-            reply_markup=reply_markup,
-            parse_mode=parse_mode,
-        )
 
     async def _set_state_and_render_wizard_step(
         self,

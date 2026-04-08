@@ -1297,8 +1297,7 @@ class StatefulMessageHandlersMixin:
                 next_state_key=STATE_EMPLOYER_SEARCH_EXPERIENCE,
                 next_text=(
                     "Кабинет работодателя > Поиск > Новый поиск\n\n🧭 Мастер поиска\n\n"
-                    "Диапазон опыта в формате `min-max`, например `2-5`. "
-                    "Отправь `-`, чтобы пропустить."
+                    f"{self._build_search_experience_prompt()}"
                 ),
                 next_step="experience",
                 next_parse_mode="Markdown",
@@ -1311,7 +1310,7 @@ class StatefulMessageHandlersMixin:
             if experience is None:
                 return await self._return_stateful_message(
                     chat_id=chat_id,
-                    text="Неверный формат опыта. Используй `min-max` (например `2-5`) или `-`.",
+                    text=self._build_search_experience_invalid_text(),
                     action="employer_search_experience_invalid",
                     parse_mode="Markdown",
                 )
@@ -1370,7 +1369,7 @@ class StatefulMessageHandlersMixin:
             if salary is None:
                 return await self._return_stateful_message(
                     chat_id=chat_id,
-                    text="Неверный формат зарплаты. Пример: `150000 250000 RUB` или `-`.",
+                    text=self._build_search_salary_invalid_text(),
                     action="employer_search_salary_invalid",
                     parse_mode="Markdown",
                 )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 from contextvars import ContextVar
 from datetime import datetime, timezone
@@ -10,6 +11,26 @@ from typing import Any
 from app.config import Settings
 
 _request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
+_REDACTED = "***"
+
+_TELEGRAM_URL_TOKEN_RE = re.compile(r"(/(?:file/)?bot)([^/\s]+)")
+_SENSITIVE_FIELD_NAMES = {
+    "bot_token",
+    "telegram_bot_token",
+    "internal_service_token",
+    "s3_access_key",
+    "s3_secret_key",
+    "aws_access_key_id",
+    "aws_secret_access_key",
+}
+_SENSITIVE_ASSIGNMENT_RE = re.compile(
+    r'(?P<prefix>\b(?:BOT_TOKEN|TELEGRAM_BOT_TOKEN|bot_token|telegram_bot_token|internal_service_token|s3_access_key|s3_secret_key|aws_access_key_id|aws_secret_access_key)\b\s*[=:]\s*[\'"]?)(?P<value>[^\'"\s,}]+)',
+    re.IGNORECASE,
+)
+_SENSITIVE_JSON_FIELD_RE = re.compile(
+    r'(?P<prefix>"(?:BOT_TOKEN|TELEGRAM_BOT_TOKEN|bot_token|telegram_bot_token|internal_service_token|s3_access_key|s3_secret_key|aws_access_key_id|aws_secret_access_key)"\s*:\s*")(?P<value>[^"]+)',
+    re.IGNORECASE,
+)
 
 _RESERVED_LOG_RECORD_FIELDS = {
     "name",
@@ -46,6 +67,32 @@ def get_request_id() -> str | None:
     return _request_id_ctx.get()
 
 
+def _redact_sensitive_text(value: str) -> str:
+    redacted = _TELEGRAM_URL_TOKEN_RE.sub(rf"\1{_REDACTED}", value)
+    redacted = _SENSITIVE_ASSIGNMENT_RE.sub(rf"\g<prefix>{_REDACTED}", redacted)
+    redacted = _SENSITIVE_JSON_FIELD_RE.sub(rf"\g<prefix>{_REDACTED}", redacted)
+    return redacted
+
+
+def _sanitize_log_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return _redact_sensitive_text(value)
+    if isinstance(value, dict):
+        sanitized: dict[Any, Any] = {}
+        for key, item in value.items():
+            normalized_key = str(key).strip().lower()
+            if normalized_key in _SENSITIVE_FIELD_NAMES:
+                sanitized[key] = _REDACTED
+            else:
+                sanitized[key] = _sanitize_log_value(item)
+        return sanitized
+    if isinstance(value, list):
+        return [_sanitize_log_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_sanitize_log_value(item) for item in value)
+    return value
+
+
 class RequestContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = get_request_id()
@@ -58,7 +105,7 @@ class JsonFormatter(logging.Formatter):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": _redact_sensitive_text(record.getMessage()),
         }
 
         request_id = getattr(record, "request_id", None)
@@ -70,31 +117,38 @@ class JsonFormatter(logging.Formatter):
             payload["extra"] = extra_fields
 
         if record.exc_info:
-            payload["exc_info"] = self.formatException(record.exc_info)
+            payload["exc_info"] = _redact_sensitive_text(self.formatException(record.exc_info))
 
         return json.dumps(payload, ensure_ascii=False)
 
     @staticmethod
     def _extract_extra_fields(record: logging.LogRecord) -> dict[str, Any]:
-        return {
-            key: value
-            for key, value in record.__dict__.items()
-            if key not in _RESERVED_LOG_RECORD_FIELDS and not key.startswith("_")
-        }
+        extracted: dict[str, Any] = {}
+        for key, value in record.__dict__.items():
+            if key in _RESERVED_LOG_RECORD_FIELDS or key.startswith("_"):
+                continue
+            if key.strip().lower() in _SENSITIVE_FIELD_NAMES:
+                extracted[key] = _REDACTED
+            else:
+                extracted[key] = _sanitize_log_value(value)
+        return extracted
 
 
 class PlainFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         request_id = getattr(record, "request_id", None)
         prefix = f"[request_id={request_id}] " if request_id else ""
-        message = f"{record.levelname} {record.name}: {prefix}{record.getMessage()}"
+        message = (
+            f"{record.levelname} {record.name}: "
+            f"{prefix}{_redact_sensitive_text(record.getMessage())}"
+        )
 
         extra_fields = JsonFormatter._extract_extra_fields(record)
         if extra_fields:
             message = f"{message} | extra={json.dumps(extra_fields, ensure_ascii=False)}"
 
         if record.exc_info:
-            return f"{message}\n{self.formatException(record.exc_info)}"
+            return f"{message}\n{_redact_sensitive_text(self.formatException(record.exc_info))}"
         return message
 
 

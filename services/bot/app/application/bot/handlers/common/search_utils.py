@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from uuid import UUID, uuid4
 
 from app.application.bot.constants import (
@@ -22,6 +23,8 @@ from app.application.bot.constants import (
 
 
 class SearchUtilsMixin:
+    _OPEN_RANGE_DASHES = ("–", "—")
+
     def _build_idempotency_key(
         self,
         *,
@@ -78,10 +81,7 @@ class SearchUtilsMixin:
             },
             "experience": {
                 "state_key": STATE_EMPLOYER_SEARCH_EXPERIENCE,
-                "prompt": (
-                    "Введи диапазон опыта в формате `min-max`, например `2-5`.\n"
-                    "Чтобы пропустить шаг, отправь `-`."
-                ),
+                "prompt": SearchUtilsMixin._build_search_experience_prompt(),
                 "parse_mode": "Markdown",
                 "allow_skip": True,
                 "allow_back": True,
@@ -100,11 +100,7 @@ class SearchUtilsMixin:
             },
             "salary": {
                 "state_key": STATE_EMPLOYER_SEARCH_SALARY,
-                "prompt": (
-                    "Введи зарплатный диапазон в формате `min max currency`, "
-                    "например `150000 250000 RUB`.\n"
-                    "Чтобы пропустить шаг, отправь `-`."
-                ),
+                "prompt": SearchUtilsMixin._build_search_salary_prompt(),
                 "parse_mode": "Markdown",
                 "allow_skip": True,
                 "allow_back": True,
@@ -169,19 +165,23 @@ class SearchUtilsMixin:
         normalized = SearchUtilsMixin._normalize_optional_user_input(raw_value)
         if normalized is None:
             return (None, None)
-        if "-" not in normalized:
+
+        compact = SearchUtilsMixin._normalize_search_range_input(normalized)
+        parsed = SearchUtilsMixin._parse_numeric_bounds(
+            compact,
+            number_pattern=r"\d+(?:[.,]\d+)?",
+            from_keyword="от",
+            to_keyword="до",
+            cast=lambda value: float(value.replace(",", ".")),
+        )
+        if parsed is None:
             return None
-        left, right = normalized.split("-", 1)
-        left = left.strip()
-        right = right.strip()
-        if not left or not right:
+        min_value, max_value = parsed
+        if min_value is not None and min_value < 0:
             return None
-        try:
-            min_value = float(left)
-            max_value = float(right)
-        except ValueError:
+        if max_value is not None and max_value < 0:
             return None
-        if min_value < 0 or max_value < 0 or max_value < min_value:
+        if min_value is not None and max_value is not None and max_value < min_value:
             return None
         return (min_value, max_value)
 
@@ -208,36 +208,143 @@ class SearchUtilsMixin:
         if normalized is None:
             return (None, None, None)
 
-        parts = normalized.split()
-        if not parts:
-            return None
+        compact = SearchUtilsMixin._normalize_search_range_input(normalized)
+        currency_match = re.search(r"\s+([A-Za-z]{3,16})\s*$", compact)
+        currency: str | None = None
+        if currency_match is not None:
+            currency = currency_match.group(1).upper()
+            compact = compact[: currency_match.start()].strip()
 
-        left: str
-        right: str
-        currency: str
-        if len(parts) >= 2 and "-" not in parts[0]:
-            left = parts[0].strip()
-            right = parts[1].strip()
-            currency = parts[2].strip().upper() if len(parts) > 2 else "RUB"
-        else:
-            range_part = parts[0]
-            currency = parts[1].strip().upper() if len(parts) > 1 else "RUB"
-            if "-" not in range_part:
+        spaced_range_match = re.fullmatch(r"(?P<left>\d+)\s+(?P<right>\d+)", compact)
+        if spaced_range_match is not None:
+            min_salary = int(spaced_range_match.group("left"))
+            max_salary = int(spaced_range_match.group("right"))
+            if max_salary < min_salary:
                 return None
-            left, right = range_part.split("-", 1)
-            left = left.strip()
-            right = right.strip()
+            if currency is None:
+                currency = "RUB"
+            return (min_salary, max_salary, currency)
 
-        if not left or not right:
+        parsed = SearchUtilsMixin._parse_numeric_bounds(
+            compact,
+            number_pattern=r"\d+",
+            from_keyword="от",
+            to_keyword="до",
+            cast=int,
+        )
+        if parsed is None:
             return None
-        try:
-            min_salary = int(left)
-            max_salary = int(right)
-        except ValueError:
+
+        min_salary, max_salary = parsed
+        if min_salary is not None and min_salary < 0:
             return None
-        if min_salary < 0 or max_salary < 0 or max_salary < min_salary:
+        if max_salary is not None and max_salary < 0:
             return None
+        if min_salary is not None and max_salary is not None and max_salary < min_salary:
+            return None
+        if currency is None and (min_salary is not None or max_salary is not None):
+            currency = "RUB"
         return (min_salary, max_salary, currency)
+
+    @staticmethod
+    def _normalize_search_range_input(value: str) -> str:
+        normalized = value
+        for dash in SearchUtilsMixin._OPEN_RANGE_DASHES:
+            normalized = normalized.replace(dash, "-")
+        return re.sub(r"\s+", " ", normalized.strip())
+
+    @staticmethod
+    def _parse_numeric_bounds(
+        value: str,
+        *,
+        number_pattern: str,
+        from_keyword: str,
+        to_keyword: str,
+        cast,
+    ) -> tuple[object | None, object | None] | None:
+        from_to_match = re.fullmatch(
+            rf"{from_keyword}\s+(?P<left>{number_pattern})\s+{to_keyword}\s+(?P<right>{number_pattern})",
+            value,
+            flags=re.IGNORECASE,
+        )
+        if from_to_match is not None:
+            return (
+                cast(from_to_match.group("left")),
+                cast(from_to_match.group("right")),
+            )
+
+        range_match = re.fullmatch(
+            rf"(?P<left>{number_pattern})\s*-\s*(?P<right>{number_pattern})",
+            value,
+            flags=re.IGNORECASE,
+        )
+        if range_match is not None:
+            return (
+                cast(range_match.group("left")),
+                cast(range_match.group("right")),
+            )
+
+        lower_only_keyword_match = re.fullmatch(
+            rf"{from_keyword}\s+(?P<left>{number_pattern})",
+            value,
+            flags=re.IGNORECASE,
+        )
+        if lower_only_keyword_match is not None:
+            return (cast(lower_only_keyword_match.group("left")), None)
+
+        lower_only_dash_match = re.fullmatch(
+            rf"(?P<left>{number_pattern})\s*-\s*",
+            value,
+            flags=re.IGNORECASE,
+        )
+        if lower_only_dash_match is not None:
+            return (cast(lower_only_dash_match.group("left")), None)
+
+        upper_only_keyword_match = re.fullmatch(
+            rf"{to_keyword}\s+(?P<right>{number_pattern})",
+            value,
+            flags=re.IGNORECASE,
+        )
+        if upper_only_keyword_match is not None:
+            return (None, cast(upper_only_keyword_match.group("right")))
+
+        upper_only_dash_match = re.fullmatch(
+            rf"-\s*(?P<right>{number_pattern})",
+            value,
+            flags=re.IGNORECASE,
+        )
+        if upper_only_dash_match is not None:
+            return (None, cast(upper_only_dash_match.group("right")))
+
+        return None
+
+    @staticmethod
+    def _build_search_experience_prompt() -> str:
+        return (
+            "Введи опыт: диапазон `2-5`, только минимум `от 2` или только максимум `до 5`.\n"
+            "Чтобы пропустить шаг, отправь `-`."
+        )
+
+    @staticmethod
+    def _build_search_experience_invalid_text() -> str:
+        return (
+            "Неверный формат опыта. Используй `2-5`, `от 2`, `до 5` или `-`."
+        )
+
+    @staticmethod
+    def _build_search_salary_prompt() -> str:
+        return (
+            "Введи зарплату: диапазон `150000 250000 RUB`, только минимум `от 150000 RUB` "
+            "или только максимум `до 250000 RUB`.\n"
+            "Чтобы пропустить шаг, отправь `-`."
+        )
+
+    @staticmethod
+    def _build_search_salary_invalid_text() -> str:
+        return (
+            "Неверный формат зарплаты. Используй `150000 250000 RUB`, "
+            "`от 150000 RUB`, `до 250000 RUB` или `-`."
+        )
 
     @staticmethod
     def _set_employer_search_edit_step(payload: dict, *, step: str) -> None:

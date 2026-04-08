@@ -217,3 +217,34 @@ async def test_message_attachment_keeps_previous_primary_message() -> None:
     ]
     assert state_service.state_by_user[100].primary_message_id == 55
     assert state_service.state_by_user[100].attachment_message_ids == [100]
+
+
+@pytest.mark.asyncio
+async def test_callback_primary_photo_replaces_previous_primary_message() -> None:
+    base_client = DummyBaseTelegramClient()
+    state_service = InMemoryDialogRenderStateService()
+    state_service.state_by_user[100] = DialogRenderStateView(
+        telegram_user_id=100,
+        chat_id=100,
+        primary_message_id=77,
+        attachment_message_ids=[78],
+    )
+    sut = DialogAwareTelegramClient(
+        base_client=base_client,
+        render_state_service=state_service,  # type: ignore[arg-type]
+    )
+
+    await sut.begin_callback_update(callback=make_callback(message_id=77))
+    await sut.send_primary_photo(
+        chat_id=100,
+        photo="https://example.com/avatar.jpg",
+        caption="profile",
+    )
+    await sut.finalize_update()
+
+    assert base_client.deleted_messages == [
+        {"chat_id": 100, "message_id": 77},
+        {"chat_id": 100, "message_id": 78},
+    ]
+    assert state_service.state_by_user[100].primary_message_id == 100
+    assert state_service.state_by_user[100].attachment_message_ids == []

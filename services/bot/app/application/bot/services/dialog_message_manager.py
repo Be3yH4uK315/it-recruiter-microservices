@@ -49,6 +49,9 @@ class DialogUpdateContext:
             if tracked_id != message_id
         ]
 
+    def note_sent_primary(self, message_id: int) -> None:
+        self.note_sent_text(message_id)
+
     def note_sent_attachment(self, message_id: int) -> None:
         self.touched_render = True
         if message_id == self.current_primary_message_id:
@@ -239,6 +242,25 @@ class DialogAwareTelegramClient:
         self._track_sent_attachment(payload)
         return payload
 
+    async def send_primary_photo(
+        self,
+        *,
+        chat_id: int,
+        photo: str,
+        caption: str | None = None,
+        reply_markup: dict | None = None,
+        parse_mode: str | None = None,
+    ) -> dict:
+        payload = await self._base_client.send_photo(
+            chat_id=chat_id,
+            photo=photo,
+            caption=caption,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+        )
+        self._track_sent_primary(payload)
+        return payload
+
     async def send_document(
         self,
         *,
@@ -331,6 +353,12 @@ class DialogAwareTelegramClient:
         if message_id is None or self._current_context is None:
             return
         self._current_context.note_sent_text(message_id)
+
+    def _track_sent_primary(self, payload: dict) -> None:
+        message_id = _extract_message_id(payload)
+        if message_id is None or self._current_context is None:
+            return
+        self._current_context.note_sent_primary(message_id)
 
     def _track_sent_attachment(self, payload: dict) -> None:
         message_id = _extract_message_id(payload)
