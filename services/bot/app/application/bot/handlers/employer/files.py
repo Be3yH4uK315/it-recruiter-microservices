@@ -359,14 +359,16 @@ class EmployerFileHandlersMixin:
             show_alert=False,
         )
         if updated is None:
-            await self._telegram_client.send_message(
-                chat_id=self._resolve_chat_id(callback, actor),
+            await self._render_callback_screen(
+                callback=callback,
+                actor=actor,
                 text=success_text,
             )
             return {"status": "processed", "action": action_name}
 
-        await self._telegram_client.send_message(
-            chat_id=self._resolve_chat_id(callback, actor),
+        await self._render_callback_screen(
+            callback=callback,
+            actor=actor,
             text=f"{success_text}\n\n"
             + self._build_employer_dashboard_message(
                 first_name=actor.first_name,

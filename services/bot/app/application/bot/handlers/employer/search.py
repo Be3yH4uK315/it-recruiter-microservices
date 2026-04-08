@@ -1736,8 +1736,9 @@ class EmployerSearchHandlersMixin:
             show_alert=False,
         )
 
-        await self._telegram_client.send_message(
-            chat_id=self._resolve_chat_id(callback, actor),
+        await self._render_callback_screen(
+            callback=callback,
+            actor=actor,
             text=self._build_search_session_status_message(search),
             reply_markup=(
                 await self._build_next_candidate_only_markup(

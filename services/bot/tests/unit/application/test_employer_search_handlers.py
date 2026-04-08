@@ -399,6 +399,7 @@ async def test_search_control_success(
         operation=operation,
     )
     assert result["action"] == expected
+    assert any(name == "render" for name, _ in sut.calls)
 
 
 @pytest.mark.asyncio

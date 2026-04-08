@@ -125,6 +125,7 @@ class DummyEmployerDashboard(EmployerDashboardHandlersMixin, SearchUtilsMixin):
         self._auth_session_service = DummyAuthService()
         self._telegram_client = DummyTelegramClient()
         self._employer_gateway = DummyEmployerGateway()
+        self._conversation_state_service = DummyConversationStateService()
         self.calls: list[tuple[str, dict]] = []
 
     async def _run_employer_gateway_call(
@@ -227,6 +228,9 @@ class DummyEmployerFiles(EmployerFileHandlersMixin, SearchUtilsMixin):
 
     def _build_employer_dashboard_message(self, **kwargs) -> str:
         return "dashboard"
+
+    async def _render_callback_screen(self, **kwargs):
+        self.calls.append(("render", kwargs))
 
     def _resolve_chat_id(self, callback, actor) -> int:
         return actor.id
@@ -477,3 +481,7 @@ async def test_employer_download_and_delete_file_branches() -> None:
         callback=callback, actor=actor, target_kind="document"
     )
     assert delete_doc["action"] == "employer_document_deleted"
+    render_calls = [payload for name, payload in sut.calls if name == "render"]
+    assert len(render_calls) == 2
+    assert "Аватар компании удалён." in render_calls[0]["text"]
+    assert "Документ компании удалён." in render_calls[1]["text"]
