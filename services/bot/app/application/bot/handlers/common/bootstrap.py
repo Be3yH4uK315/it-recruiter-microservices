@@ -19,6 +19,18 @@ logger = get_logger(__name__)
 
 
 class BootstrapRegistrationHandlersMixin:
+    def _build_role_selection_screen_message(
+        self,
+        *,
+        actor: TelegramUser,
+    ) -> str:
+        return self._build_structured_prompt(
+            section_path="Выбор роли",
+            title="Выбери роль",
+            instruction=f"Привет, {actor.first_name or 'пользователь'}.",
+            details=["Выбери роль, в которой хочешь продолжить работу:"],
+        )
+
     async def _send_bootstrap_message(
         self,
         *,
@@ -148,10 +160,8 @@ class BootstrapRegistrationHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                f"👋 Привет, {actor.first_name or 'пользователь'}.\n\n"
-                "Выбери роль, в которой хочешь продолжить работу:"
-            ),
+            text=self._build_role_selection_screen_message(actor=actor),
+            parse_mode="Markdown",
             reply_markup=await self._build_role_selection_markup(telegram_user_id=actor.id),
         )
 
@@ -169,7 +179,13 @@ class BootstrapRegistrationHandlersMixin:
         if access_token is None:
             await self._send_bootstrap_message(
                 chat_id=chat_id,
-                text="Не удалось получить активную сессию. Нажми /start, чтобы начать заново.",
+                text=self._build_status_screen(
+                    section_path="Старт",
+                    title="Сессия недоступна",
+                    status_line="⚠️ Не удалось получить активную сессию.",
+                    details=["Нажми `/start`, чтобы начать заново."],
+                ),
+                parse_mode="Markdown",
             )
             return
 
@@ -193,10 +209,11 @@ class BootstrapRegistrationHandlersMixin:
                 return
 
             if candidate is None:
-                prompt_text = (
-                    "Профиль кандидата не найден.\n\n"
-                    "Давай создадим минимальный профиль.\n"
-                    "Сначала введи отображаемое имя."
+                prompt_text = self._build_structured_prompt(
+                    title="Профиль кандидата не найден",
+                    instruction="Давай создадим минимальный профиль.",
+                    details=["Сначала введи отображаемое имя."],
+                    examples=["Иван Петров"],
                 )
                 if intro_note:
                     prompt_text = f"{intro_note}\n\n{prompt_text}"
@@ -207,7 +224,7 @@ class BootstrapRegistrationHandlersMixin:
                     payload=None,
                     chat_id=chat_id,
                     text=prompt_text,
-                    parse_mode=None,
+                    parse_mode="Markdown",
                 )
                 return
 
@@ -240,10 +257,11 @@ class BootstrapRegistrationHandlersMixin:
                 return
 
             if employer is None:
-                prompt_text = (
-                    "Профиль работодателя не найден.\n\n"
-                    "Введи название компании.\n"
-                    "Если пока не хочешь указывать компанию, отправь `-`."
+                prompt_text = self._build_structured_prompt(
+                    title="Профиль работодателя не найден",
+                    instruction="Давай создадим минимальный профиль.",
+                    details=["Сначала введи название компании."],
+                    examples=["Acme Labs"],
                 )
                 if intro_note:
                     prompt_text = f"{intro_note}\n\n{prompt_text}"
@@ -269,7 +287,13 @@ class BootstrapRegistrationHandlersMixin:
 
         await self._send_bootstrap_message(
             chat_id=chat_id,
-            text="Неизвестная роль. Нажми /start, чтобы начать заново.",
+            text=self._build_status_screen(
+                section_path="Старт",
+                title="Неизвестная роль",
+                status_line="⚠️ Неизвестная роль.",
+                details=["Нажми `/start`, чтобы начать заново."],
+            ),
+            parse_mode="Markdown",
         )
 
     async def _handle_switch_role_from_menu(
@@ -311,9 +335,13 @@ class BootstrapRegistrationHandlersMixin:
             await self._render_callback_screen(
                 callback=callback,
                 actor=actor,
-                text=(
-                    "Базовую регистрацию оставили. Продолжить можно из меню профиля в любой момент."
+                text=self._build_status_screen(
+                    section_path="Регистрация кандидата",
+                    title="Регистрация приостановлена",
+                    status_line="ℹ️ Базовую регистрацию оставили.",
+                    details=["Продолжить можно из меню профиля в любой момент."],
                 ),
+                parse_mode="Markdown",
             )
             return {"status": "processed", "action": "candidate_registration_finish_minimal"}
 
@@ -331,7 +359,12 @@ class BootstrapRegistrationHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=("Выбери форматы работы кнопками ниже.\n\n" "Текущий выбор: —"),
+            text=self._build_structured_prompt(
+                title="Выбери форматы работы",
+                instruction="Используй кнопки ниже.",
+                current_value="—",
+            ),
+            parse_mode="Markdown",
             reply_markup=await self._build_candidate_work_modes_selector_markup(
                 telegram_user_id=actor.id,
                 selected_modes=[],
@@ -364,10 +397,13 @@ class BootstrapRegistrationHandlersMixin:
             await self._render_callback_screen(
                 callback=callback,
                 actor=actor,
-                text=(
-                    "Оставили базовую регистрацию. Продолжить можно из меню профиля "
-                    "в любой момент."
+                text=self._build_status_screen(
+                    section_path="Регистрация работодателя",
+                    title="Регистрация приостановлена",
+                    status_line="ℹ️ Оставили базовую регистрацию.",
+                    details=["Продолжить можно из меню профиля в любой момент."],
                 ),
+                parse_mode="Markdown",
             )
             return {"status": "processed", "action": "employer_registration_finish_minimal"}
 
@@ -385,9 +421,11 @@ class BootstrapRegistrationHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Telegram-контакт компании синхронизирован автоматически.\n"
-                "Введи email компании или отправь `-`, чтобы пропустить."
+            text=self._build_structured_prompt(
+                title="Введи email компании",
+                instruction="Telegram-контакт компании синхронизирован автоматически.",
+                examples=["jobs@example.com"],
+                footer="Или отправь `-`, чтобы пропустить.",
             ),
             parse_mode="Markdown",
             reply_markup=await self._build_stateful_cancel_markup(actor.id),
@@ -426,7 +464,13 @@ class BootstrapRegistrationHandlersMixin:
             await self._clear_bootstrap_state_and_send_message(
                 telegram_user_id=actor.id,
                 chat_id=chat_id,
-                text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                text=self._build_status_screen(
+                    section_path="Регистрация работодателя",
+                    title="Сессия истекла",
+                    status_line="⚠️ Сессия устарела.",
+                    details=["Нажми `/start`, чтобы выбрать роль заново."],
+                ),
+                parse_mode="Markdown",
             )
             return {"status": "processed", "action": "session_expired"}
 
@@ -443,7 +487,13 @@ class BootstrapRegistrationHandlersMixin:
                 await self._clear_bootstrap_state_and_send_message(
                     telegram_user_id=actor.id,
                     chat_id=chat_id,
-                    text="Профиль работодателя не найден. Нажми /start, чтобы начать заново.",
+                    text=self._build_status_screen(
+                        section_path="Регистрация работодателя",
+                        title="Профиль не найден",
+                        status_line="⚠️ Профиль работодателя не найден.",
+                        details=["Нажми `/start`, чтобы начать заново."],
+                    ),
+                    parse_mode="Markdown",
                 )
                 return {"status": "processed", "action": "employer_not_found"}
 

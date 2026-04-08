@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 
 from app.application.bot.handlers.candidate.file_contact import CandidateFileContactHandlersMixin
+from app.application.bot.ui.profile_message_mixins.shared import ProfileSharedMessagesMixin
 from app.application.common.contracts import CandidateProfileSummary
 from app.application.common.gateway_errors import CandidateGatewayError
 from app.application.common.telegram_api import TelegramApiError
@@ -80,7 +81,7 @@ class DummyCandidateGateway:
             raise CandidateGatewayError("boom")
 
 
-class DummyCandidateFiles(CandidateFileContactHandlersMixin):
+class DummyCandidateFiles(CandidateFileContactHandlersMixin, ProfileSharedMessagesMixin):
     def __init__(self) -> None:
         self._auth_session_service = DummyAuthService()
         self._telegram_client = DummyTelegramClient()
@@ -152,8 +153,8 @@ async def test_candidate_delete_file_renders_updated_screen_in_place() -> None:
     assert resume_result["action"] == "candidate_resume_deleted"
     render_calls = [payload for name, payload in sut.calls if name == "render"]
     assert len(render_calls) == 2
-    assert "Аватар удалён." in render_calls[0]["text"]
-    assert "Резюме удалено." in render_calls[1]["text"]
+    assert "✅ *Аватар удалён.*" in render_calls[0]["text"]
+    assert "✅ *Резюме удалено.*" in render_calls[1]["text"]
     assert all(call["reply_markup"] == {"dashboard": 100} for call in render_calls)
 
 

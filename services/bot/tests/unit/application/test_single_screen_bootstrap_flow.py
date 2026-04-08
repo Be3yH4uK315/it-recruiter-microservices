@@ -8,6 +8,7 @@ import pytest
 from app.application.bot.constants import ROLE_CANDIDATE, ROLE_EMPLOYER
 from app.application.bot.handlers.common.bootstrap import BootstrapRegistrationHandlersMixin
 from app.application.bot.handlers.common.stateful_messages import StatefulMessageHandlersMixin
+from app.application.bot.handlers.common.utils import CommonUtilsMixin
 
 
 class DummyTelegramClient:
@@ -38,7 +39,11 @@ class DummyActor:
     first_name: str | None = "User"
 
 
-class CandidateBootstrapSut(StatefulMessageHandlersMixin, BootstrapRegistrationHandlersMixin):
+class CandidateBootstrapSut(
+    CommonUtilsMixin,
+    StatefulMessageHandlersMixin,
+    BootstrapRegistrationHandlersMixin,
+):
     def __init__(self) -> None:
         self._telegram_client = DummyTelegramClient()
         self._auth_session_service = DummyAuthSessionService()
@@ -64,7 +69,11 @@ class CandidateBootstrapSut(StatefulMessageHandlersMixin, BootstrapRegistrationH
         return None
 
 
-class EmployerBootstrapSut(StatefulMessageHandlersMixin, BootstrapRegistrationHandlersMixin):
+class EmployerBootstrapSut(
+    CommonUtilsMixin,
+    StatefulMessageHandlersMixin,
+    BootstrapRegistrationHandlersMixin,
+):
     def __init__(self) -> None:
         self._telegram_client = DummyTelegramClient()
         self._auth_session_service = DummyAuthSessionService()

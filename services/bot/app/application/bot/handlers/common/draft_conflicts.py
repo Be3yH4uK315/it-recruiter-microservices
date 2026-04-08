@@ -95,11 +95,16 @@ class DraftConflictHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "У тебя есть незавершённый шаг.\n\n"
-                f"Текущее действие: {self._build_draft_conflict_state_label(state.state_key)}\n\n"
-                "Выбери, что сделать:"
+            text=self._build_status_screen(
+                section_path="Черновик",
+                title="Есть незавершённое действие",
+                status_line="ℹ️ У тебя есть незавершённый шаг.",
+                details=[
+                    f"Текущее действие: {self._build_draft_conflict_state_label(state.state_key)}",
+                    "Выбери, что сделать:",
+                ],
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_draft_conflict_markup(
                 telegram_user_id=actor.id,
                 target_action=target_action,
@@ -174,7 +179,13 @@ class DraftConflictHandlersMixin:
             await self._render_callback_screen(
                 callback=callback,
                 actor=actor,
-                text="Активного черновика нет. Выбери роль для продолжения.",
+                text=self._build_status_screen(
+                    section_path="Черновик",
+                    title="Черновик не найден",
+                    status_line="ℹ️ Активного черновика нет.",
+                    details=["Выбери роль для продолжения."],
+                ),
+                parse_mode="Markdown",
                 reply_markup=await self._build_role_selection_markup(telegram_user_id=actor.id),
             )
             return {"status": "processed", "action": "start_resume_continue_no_state"}
@@ -201,10 +212,8 @@ class DraftConflictHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                f"Привет, {actor.first_name or 'пользователь'}.\n\n"
-                "Выбери роль, в которой хочешь продолжить работу:"
-            ),
+            text=self._build_role_selection_message(actor=actor),
+            parse_mode="Markdown",
             reply_markup=await self._build_role_selection_markup(telegram_user_id=actor.id),
         )
         return {"status": "processed", "action": "start_resume_reset"}
@@ -237,10 +246,13 @@ class DraftConflictHandlersMixin:
             await self._render_callback_screen(
                 callback=callback,
                 actor=actor,
-                text=(
-                    "Черновик уже завершён или сброшен.\n\n"
-                    "Можешь открыть нужный раздел снова через меню."
+                text=self._build_status_screen(
+                    section_path="Черновик",
+                    title="Черновик уже завершён",
+                    status_line="ℹ️ Черновик уже завершён или сброшен.",
+                    details=["Можешь открыть нужный раздел снова через меню."],
                 ),
+                parse_mode="Markdown",
             )
             return {"status": "processed", "action": "draft_conflict_continue_no_state"}
 
@@ -281,10 +293,13 @@ class DraftConflictHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Черновик сброшен, но перейти в выбранный раздел не удалось.\n\n"
-                "Нажми /start и открой нужный пункт меню."
+            text=self._build_status_screen(
+                section_path="Черновик",
+                title="Черновик сброшен",
+                status_line="⚠️ Перейти в выбранный раздел не удалось.",
+                details=["Нажми `/start` и открой нужный пункт меню."],
             ),
+            parse_mode="Markdown",
         )
         return {"status": "processed", "action": "draft_conflict_reset_unknown_action"}
 

@@ -13,6 +13,20 @@ logger = get_logger(__name__)
 
 
 class EmployerFileHandlersMixin:
+    def _build_employer_file_status_message(
+        self,
+        *,
+        title: str,
+        status_line: str,
+        details: list[str] | None = None,
+    ) -> str:
+        return self._build_status_screen(
+            section_path="Кабинет работодателя · Файлы компании",
+            title=title,
+            status_line=status_line,
+            details=details,
+        )
+
     async def _handle_employer_file_upload_state(
         self,
         *,
@@ -28,7 +42,12 @@ class EmployerFileHandlersMixin:
             await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
             await self._telegram_client.send_message(
                 chat_id=chat_id,
-                text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                text=self._build_employer_file_status_message(
+                    title="Сессия истекла",
+                    status_line="⚠️ Сессия устарела.",
+                    details=["Нажми `/start`, чтобы выбрать роль заново."],
+                ),
+                parse_mode="Markdown",
             )
             return {"status": "processed", "action": "session_expired"}
 
@@ -55,7 +74,12 @@ class EmployerFileHandlersMixin:
             await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
             await self._telegram_client.send_message(
                 chat_id=chat_id,
-                text="Профиль работодателя не найден. Нажми /start, чтобы начать заново.",
+                text=self._build_employer_file_status_message(
+                    title="Профиль не найден",
+                    status_line="⚠️ Профиль работодателя не найден.",
+                    details=["Нажми `/start`, чтобы начать заново."],
+                ),
+                parse_mode="Markdown",
             )
             return {"status": "processed", "action": "employer_not_found"}
 
@@ -116,7 +140,12 @@ class EmployerFileHandlersMixin:
             )
             await self._telegram_client.send_message(
                 chat_id=chat_id,
-                text="Не удалось обработать файл. Попробуй отправить его ещё раз.",
+                text=self._build_employer_file_status_message(
+                    title="Файл не обработан",
+                    status_line="⚠️ Не удалось обработать файл.",
+                    details=["Попробуй отправить его ещё раз."],
+                ),
+                parse_mode="Markdown",
             )
             return {"status": "processed", "action": "employer_file_upload_failed"}
         mark_file_upload(
@@ -144,7 +173,14 @@ class EmployerFileHandlersMixin:
             refreshed = None
 
         if refreshed is None:
-            await self._telegram_client.send_message(chat_id=chat_id, text=success_text)
+            await self._telegram_client.send_message(
+                chat_id=chat_id,
+                text=self._build_employer_file_status_message(
+                    title="Файл обновлён",
+                    status_line=f"✅ {success_text}",
+                ),
+                parse_mode="Markdown",
+            )
             return {"status": "processed", "action": action_name}
 
         stats = await self._safe_get_employer_statistics(
@@ -153,7 +189,7 @@ class EmployerFileHandlersMixin:
         )
         await self._telegram_client.send_message(
             chat_id=chat_id,
-            text=f"{success_text}\n\n"
+            text=f"✅ *{success_text}*\n\n"
             + self._build_employer_dashboard_message(
                 first_name=actor.first_name,
                 employer=refreshed,
@@ -362,14 +398,18 @@ class EmployerFileHandlersMixin:
             await self._render_callback_screen(
                 callback=callback,
                 actor=actor,
-                text=success_text,
+                text=self._build_employer_file_status_message(
+                    title="Файл удалён",
+                    status_line=f"✅ {success_text}",
+                ),
+                parse_mode="Markdown",
             )
             return {"status": "processed", "action": action_name}
 
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=f"{success_text}\n\n"
+            text=f"✅ *{success_text}*\n\n"
             + self._build_employer_dashboard_message(
                 first_name=actor.first_name,
                 employer=updated,

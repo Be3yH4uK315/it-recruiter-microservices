@@ -15,8 +15,10 @@ from app.application.bot.constants import (
     STATE_EMPLOYER_SEARCH_TITLE,
     STATE_EMPLOYER_SEARCH_WORK_MODES,
 )
+from app.application.bot.handlers.common.utils import CommonUtilsMixin
 from app.application.bot.handlers.common.search_utils import SearchUtilsMixin
 from app.application.bot.handlers.employer.search import EmployerSearchHandlersMixin
+from app.application.bot.ui.profile_message_mixins.shared import ProfileSharedMessagesMixin
 from app.application.common.contracts import (
     CandidateProfileSummary,
     ContactAccessResultView,
@@ -206,7 +208,9 @@ class DummyEmployerGateway:
         )
 
 
-class DummyEmployerSearch(EmployerSearchHandlersMixin, SearchUtilsMixin):
+class DummyEmployerSearch(
+    EmployerSearchHandlersMixin, SearchUtilsMixin, CommonUtilsMixin, ProfileSharedMessagesMixin
+):
     def __init__(self) -> None:
         self._conversation_state_service = DummyConversationStateService()
         self._auth_session_service = DummyAuthSessionService()

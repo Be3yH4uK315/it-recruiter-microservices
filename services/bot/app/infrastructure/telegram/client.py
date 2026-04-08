@@ -22,6 +22,8 @@ class TelegramFileInfo:
 
 
 class TelegramApiClient:
+    _MARKDOWN_V2_SPECIALS = frozenset("_*[]()~`>#+-=|{}.!")
+
     def __init__(
         self,
         *,
@@ -86,21 +88,25 @@ class TelegramApiClient:
         reply_markup: dict | None = None,
         parse_mode: str | None = None,
     ) -> dict:
+        normalized_parse_mode, normalized_text = self._normalize_text_parse_mode(
+            text=text,
+            parse_mode=parse_mode,
+        )
         payload: dict[str, object] = {
             "chat_id": chat_id,
-            "text": text,
+            "text": normalized_text,
         }
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
-        if parse_mode is not None:
-            payload["parse_mode"] = parse_mode
+        if normalized_parse_mode is not None:
+            payload["parse_mode"] = normalized_parse_mode
 
         if self.uses_placeholder_token:
             return {
                 "message_id": 0,
                 "chat": {"id": chat_id},
                 "date": 0,
-                "text": text,
+                "text": normalized_text,
             }
 
         return await self._post("sendMessage", payload)
@@ -114,16 +120,20 @@ class TelegramApiClient:
         reply_markup: dict | None = None,
         parse_mode: str | None = None,
     ) -> dict:
+        normalized_parse_mode, normalized_caption = self._normalize_text_parse_mode(
+            text=caption,
+            parse_mode=parse_mode,
+        )
         payload: dict[str, object] = {
             "chat_id": chat_id,
             "photo": photo,
         }
-        if caption is not None:
-            payload["caption"] = caption
+        if normalized_caption is not None:
+            payload["caption"] = normalized_caption
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
-        if parse_mode is not None:
-            payload["parse_mode"] = parse_mode
+        if normalized_parse_mode is not None:
+            payload["parse_mode"] = normalized_parse_mode
         if self.uses_placeholder_token:
             return {
                 "message_id": 0,
@@ -164,25 +174,110 @@ class TelegramApiClient:
         reply_markup: dict | None = None,
         parse_mode: str | None = None,
     ) -> dict:
+        normalized_parse_mode, normalized_text = self._normalize_text_parse_mode(
+            text=text,
+            parse_mode=parse_mode,
+        )
         payload: dict[str, object] = {
             "chat_id": chat_id,
             "message_id": message_id,
-            "text": text,
+            "text": normalized_text,
         }
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
-        if parse_mode is not None:
-            payload["parse_mode"] = parse_mode
+        if normalized_parse_mode is not None:
+            payload["parse_mode"] = normalized_parse_mode
 
         if self.uses_placeholder_token:
             return {
                 "message_id": message_id,
                 "chat": {"id": chat_id},
                 "date": 0,
-                "text": text,
+                "text": normalized_text,
             }
 
         return await self._post("editMessageText", payload)
+
+    @classmethod
+    def _normalize_text_parse_mode(
+        cls,
+        *,
+        text: str | None,
+        parse_mode: str | None,
+    ) -> tuple[str | None, str | None]:
+        if text is None or parse_mode is None:
+            return parse_mode, text
+        if parse_mode != "Markdown":
+            return parse_mode, text
+        return "MarkdownV2", cls._convert_markdown_to_markdown_v2(text)
+
+    @classmethod
+    def _convert_markdown_to_markdown_v2(cls, text: str) -> str:
+        result: list[str] = []
+        buffer: list[str] = []
+        mode = "plain"
+        i = 0
+        text_len = len(text)
+
+        def flush_buffer() -> None:
+            if not buffer:
+                return
+            segment = "".join(buffer)
+            buffer.clear()
+            if mode == "code":
+                result.append(cls._escape_markdown_v2_code(segment))
+            else:
+                result.append(cls._escape_markdown_v2_text(segment))
+
+        while i < text_len:
+            char = text[i]
+
+            if char == "\\" and i + 1 < text_len:
+                next_char = text[i + 1]
+                if next_char in {"\\", "_", "*", "[", "]", "`"}:
+                    buffer.append(next_char)
+                    i += 2
+                    continue
+
+            if char == "`":
+                flush_buffer()
+                result.append("`")
+                mode = "plain" if mode == "code" else "code"
+                i += 1
+                continue
+
+            if char == "*" and mode != "code":
+                flush_buffer()
+                result.append("*")
+                mode = "plain" if mode == "bold" else "bold"
+                i += 1
+                continue
+
+            buffer.append(char)
+            i += 1
+
+        flush_buffer()
+        return "".join(result)
+
+    @classmethod
+    def _escape_markdown_v2_text(cls, value: str) -> str:
+        escaped: list[str] = []
+        for char in value:
+            if char == "\\" or char in cls._MARKDOWN_V2_SPECIALS:
+                escaped.append(f"\\{char}")
+            else:
+                escaped.append(char)
+        return "".join(escaped)
+
+    @staticmethod
+    def _escape_markdown_v2_code(value: str) -> str:
+        escaped: list[str] = []
+        for char in value:
+            if char in {"\\", "`"}:
+                escaped.append(f"\\{char}")
+            else:
+                escaped.append(char)
+        return "".join(escaped)
 
     async def delete_message(
         self,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.application.bot.handlers.common.gateway import GatewayUtilsMixin
+from app.application.bot.ui.profile_message_mixins.shared import ProfileSharedMessagesMixin
 from app.application.common.gateway_errors import (
     CandidateGatewayForbiddenError,
     CandidateGatewayUnavailableError,
@@ -27,7 +28,7 @@ class DummyTelegramClient:
         self.answered_callbacks.append(kwargs)
 
 
-class GatewaySut(GatewayUtilsMixin):
+class GatewaySut(GatewayUtilsMixin, ProfileSharedMessagesMixin):
     def __init__(self) -> None:
         self._telegram_client = DummyTelegramClient()
         self.created_contexts: list[dict] = []
@@ -77,7 +78,16 @@ async def test_candidate_gateway_error_uses_primary_message_in_message_flow() ->
     )
 
     assert sut._telegram_client.messages == [
-        {"chat_id": 100, "text": "Недостаточно прав для этого действия.", "reply_markup": None}
+        {
+            "chat_id": 100,
+            "text": sut._build_gateway_feedback_message(
+                gateway_label="Кандидаты",
+                title="Недостаточно прав",
+                status_line="⚠️ Недостаточно прав для этого действия.",
+            ),
+            "reply_markup": None,
+            "parse_mode": "Markdown",
+        }
     ]
     assert sut._telegram_client.attachment_messages == []
 
@@ -103,8 +113,14 @@ async def test_callback_gateway_error_uses_attachment_message() -> None:
     assert sut._telegram_client.attachment_messages == [
         {
             "chat_id": 100,
-            "text": "Сервис кандидатов временно недоступен. Попробуй позже.",
+            "text": sut._build_gateway_feedback_message(
+                gateway_label="Кандидаты",
+                title="Сервис временно недоступен",
+                status_line="⚠️ Сервис кандидатов временно недоступен.",
+                details=["Попробуй позже."],
+            ),
             "reply_markup": None,
+            "parse_mode": "Markdown",
         }
     ]
     assert sut._telegram_client.messages == []
@@ -133,10 +149,15 @@ async def test_retry_action_suggestion_uses_attachment_message() -> None:
     assert sut._telegram_client.attachment_messages == [
         {
             "chat_id": 100,
-            "text": "Можно попробовать ещё раз прямо сейчас.",
+            "text": sut._build_gateway_feedback_message(
+                gateway_label="Системные действия",
+                title="Можно повторить попытку",
+                status_line="ℹ️ Можно попробовать ещё раз прямо сейчас.",
+            ),
             "reply_markup": {
                 "inline_keyboard": [[{"text": "🔁 Повторить попытку", "callback_data": "retry-token"}]]
             },
+            "parse_mode": "Markdown",
         }
     ]
     assert sut._telegram_client.messages == []

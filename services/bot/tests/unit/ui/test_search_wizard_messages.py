@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.application.bot.handlers.common.search_utils import SearchUtilsMixin
 from app.application.bot.ui.profile_message_mixins.shared import ProfileSharedMessagesMixin
 from app.application.bot.ui.search_wizard_messages import BotSearchWizardMessagesMixin
 
@@ -55,6 +56,16 @@ def test_build_employer_search_filters_summary_covers_all_fields() -> None:
     assert "₽" in text
     assert "B2" in text
     assert "…" in text
+
+
+def test_search_prompt_builders_use_structured_layout() -> None:
+    experience_prompt = SearchUtilsMixin._build_search_experience_prompt()
+    salary_prompt = SearchUtilsMixin._build_search_salary_prompt()
+
+    assert "*Введи опыт*" in experience_prompt
+    assert "`от 2`" in experience_prompt
+    assert "*Введи зарплату*" in salary_prompt
+    assert "`до 250000 RUB`" in salary_prompt
 
 
 def test_build_employer_search_step_current_value_for_steps() -> None:

@@ -260,6 +260,7 @@ class EntrypointHandlersMixin:
                     example="Иван Петров",
                 ),
                 action_name="candidate_edit_display_name_start",
+                parse_mode="Markdown",
             )
 
         if action == "candidate_menu_edit_headline_role":
@@ -267,8 +268,13 @@ class EntrypointHandlersMixin:
                 callback=callback,
                 actor=actor,
                 state_key=STATE_CANDIDATE_EDIT_HEADLINE_ROLE,
-                prompt="Введи основную роль кандидата. Например: Python Developer.",
+                prompt=self._build_structured_prompt(
+                    title="Введи основную роль кандидата",
+                    instruction="Укажи основную роль, по которой кандидат ищет работу.",
+                    examples=["Python Developer"],
+                ),
                 action_name="candidate_edit_headline_role_start",
+                parse_mode="Markdown",
             )
 
         if action == "candidate_menu_edit_location":
@@ -276,7 +282,12 @@ class EntrypointHandlersMixin:
                 callback=callback,
                 actor=actor,
                 state_key=STATE_CANDIDATE_EDIT_LOCATION,
-                prompt="Введи локацию. Чтобы очистить поле, отправь `-`.",
+                prompt=self._build_structured_prompt(
+                    title="Введи локацию",
+                    instruction="Укажи город, страну или другой удобный формат.",
+                    examples=["Москва", "Berlin"],
+                    footer="Чтобы очистить поле, отправь `-`.",
+                ),
                 action_name="candidate_edit_location_start",
                 parse_mode="Markdown",
             )
@@ -286,7 +297,11 @@ class EntrypointHandlersMixin:
                 callback=callback,
                 actor=actor,
                 state_key=STATE_CANDIDATE_EDIT_ABOUT_ME,
-                prompt="Введи текст «About me». Чтобы очистить поле, отправь `-`.",
+                prompt=self._build_structured_prompt(
+                    title="Введи About me",
+                    instruction="Коротко опиши профиль, сильные стороны или цели.",
+                    footer="Чтобы очистить поле, отправь `-`.",
+                ),
                 action_name="candidate_edit_about_me_start",
                 parse_mode="Markdown",
             )
@@ -314,10 +329,11 @@ class EntrypointHandlersMixin:
                 callback=callback,
                 actor=actor,
                 state_key=STATE_CANDIDATE_EDIT_SALARY,
-                prompt=(
-                    "Введи зарплату в формате `min max currency`.\n"
-                    "Пример: `250000 350000 RUB`.\n"
-                    "Чтобы очистить зарплату, отправь `-`."
+                prompt=self._build_structured_prompt(
+                    title="Введи зарплату",
+                    instruction="Можно указать диапазон, только минимум или только максимум.",
+                    examples=["250000 350000 RUB", "от 250000 RUB", "до 350000 RUB"],
+                    footer="Чтобы очистить зарплату, отправь `-`.",
                 ),
                 action_name="candidate_edit_salary_start",
                 parse_mode="Markdown",
@@ -328,14 +344,17 @@ class EntrypointHandlersMixin:
                 callback=callback,
                 actor=actor,
                 state_key=STATE_CANDIDATE_EDIT_SKILLS,
-                prompt=(
-                    "Введи навыки, по одному на строку:\n"
-                    "`skill; kind; level`\n"
-                    "Разделитель: `;` (также поддерживается `|`).\n"
-                    "kind: `hard`, `soft`, `tool`, `language`.\n"
-                    "level: 1..5 (можно пусто).\n"
-                    "Пример: `Python; hard; 5`\n"
-                    "Чтобы очистить список, отправь `-`."
+                prompt=self._build_structured_prompt(
+                    title="Введи навыки",
+                    instruction="Добавляй по одному навыку на строку.",
+                    details=[
+                        "`skill; kind; level`",
+                        "Разделитель: `;` или `|`.",
+                        "kind: `hard`, `soft`, `tool`, `language`.",
+                        "level: 1..5, можно оставить пустым.",
+                    ],
+                    examples=["Python; hard; 5"],
+                    footer="Чтобы очистить список, отправь `-`.",
                 ),
                 action_name="candidate_edit_skills_start",
                 parse_mode="Markdown",
@@ -346,12 +365,15 @@ class EntrypointHandlersMixin:
                 callback=callback,
                 actor=actor,
                 state_key=STATE_CANDIDATE_EDIT_EDUCATION,
-                prompt=(
-                    "Введи образование, по одному на строку:\n"
-                    "`level; institution; year`\n"
-                    "Разделитель: `;` (также поддерживается `|`).\n"
-                    "Пример: `Bachelor; NSU; 2022`\n"
-                    "Чтобы очистить список, отправь `-`."
+                prompt=self._build_structured_prompt(
+                    title="Введи образование",
+                    instruction="Добавляй по одной записи на строку.",
+                    details=[
+                        "`level; institution; year`",
+                        "Разделитель: `;` или `|`.",
+                    ],
+                    examples=["Bachelor; NSU; 2022"],
+                    footer="Чтобы очистить список, отправь `-`.",
                 ),
                 action_name="candidate_edit_education_start",
                 parse_mode="Markdown",
@@ -362,14 +384,18 @@ class EntrypointHandlersMixin:
                 callback=callback,
                 actor=actor,
                 state_key=STATE_CANDIDATE_EDIT_EXPERIENCES,
-                prompt=(
-                    "Введи опыт, по одному на строку:\n"
-                    "`company; position; start_date; end_date; responsibilities`\n"
-                    "Разделитель: `;` (также поддерживается `|`).\n"
-                    "Дата: `YYYY-MM-DD`, `end_date` можно пустым.\n"
-                    "Пример: `Acme; Backend Developer; 2023-01-01; "
-                    "2024-02-01; FastAPI и PostgreSQL`\n"
-                    "Чтобы очистить список, отправь `-`."
+                prompt=self._build_structured_prompt(
+                    title="Введи опыт",
+                    instruction="Добавляй по одной записи на строку.",
+                    details=[
+                        "`company; position; start_date; end_date; responsibilities`",
+                        "Разделитель: `;` или `|`.",
+                        "Дата: `YYYY-MM-DD`, `end_date` можно оставить пустым.",
+                    ],
+                    examples=[
+                        "Acme; Backend Developer; 2023-01-01; 2024-02-01; FastAPI и PostgreSQL"
+                    ],
+                    footer="Чтобы очистить список, отправь `-`.",
                 ),
                 action_name="candidate_edit_experiences_start",
                 parse_mode="Markdown",
@@ -380,13 +406,16 @@ class EntrypointHandlersMixin:
                 callback=callback,
                 actor=actor,
                 state_key=STATE_CANDIDATE_EDIT_PROJECTS,
-                prompt=(
-                    "Введи проекты, по одному на строку:\n"
-                    "`title; description; link1,link2`\n"
-                    "Разделитель между полями: `;` (также поддерживается `|`).\n"
-                    "Ссылки опциональны, только http/https.\n"
-                    "Пример: `ATS Bot; Telegram recruiting bot; https://github.com/org/repo`\n"
-                    "Чтобы очистить список, отправь `-`."
+                prompt=self._build_structured_prompt(
+                    title="Введи проекты",
+                    instruction="Добавляй по одному проекту на строку.",
+                    details=[
+                        "`title; description; link1,link2`",
+                        "Разделитель между полями: `;` или `|`.",
+                        "Ссылки опциональны, только `http`/`https`.",
+                    ],
+                    examples=["ATS Bot; Telegram recruiting bot; https://github.com/org/repo"],
+                    footer="Чтобы очистить список, отправь `-`.",
                 ),
                 action_name="candidate_edit_projects_start",
                 parse_mode="Markdown",

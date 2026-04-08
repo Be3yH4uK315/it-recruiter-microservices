@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from app.application.bot.handlers.candidate.dashboard import CandidateDashboardHandlersMixin
+from app.application.bot.ui.profile_message_mixins.shared import ProfileSharedMessagesMixin
 from app.application.common.contracts import CandidateProfileSummary
 from app.application.common.gateway_errors import CandidateGatewayError
 from app.schemas.telegram import TelegramCallbackQuery, TelegramUser
@@ -63,7 +64,7 @@ class DummyCandidateGateway:
         return self.candidate
 
 
-class DummyCandidateDashboard(CandidateDashboardHandlersMixin):
+class DummyCandidateDashboard(CandidateDashboardHandlersMixin, ProfileSharedMessagesMixin):
     def __init__(
         self,
         *,
@@ -121,6 +122,12 @@ class DummyCandidateDashboard(CandidateDashboardHandlersMixin):
 
     async def _build_candidate_files_section_markup(self, **kwargs):
         return {"files": True}
+
+    async def _build_candidate_contacts_section_markup(self, **kwargs):
+        return {"contacts": True}
+
+    def _humanize_candidate_status(self, value: str | None) -> str:
+        return value or "—"
 
 
 def make_callback_actor() -> tuple[TelegramCallbackQuery, TelegramUser]:
@@ -190,3 +197,6 @@ async def test_candidate_dashboard_and_menus_happy_paths() -> None:
     assert dashboard == {"status": "processed", "action": "candidate_dashboard"}
     assert profile_edit_menu == {"status": "processed", "action": "candidate_profile_edit_menu"}
     assert files_section == {"status": "processed", "action": "candidate_menu_open_files_section"}
+    render_calls = [payload for name, payload in sut.calls if name == "_render_callback_screen"]
+    assert any("Редактирование профиля кандидата" in call["text"] for call in render_calls)
+    assert any("Файлы кандидата" in call["text"] for call in render_calls)

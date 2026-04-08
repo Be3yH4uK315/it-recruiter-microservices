@@ -12,6 +12,22 @@ logger = get_logger(__name__)
 
 
 class CandidateProfileSubmitHandlersMixin:
+    def _build_candidate_submit_status_message(
+        self,
+        *,
+        title: str,
+        status_line: str,
+        details: list[str] | None = None,
+        footer: str | None = None,
+    ) -> str:
+        return self._build_status_screen(
+            section_path="Кабинет кандидата · Редактирование профиля",
+            title=title,
+            status_line=status_line,
+            details=details,
+            footer=footer,
+        )
+
     async def _send_candidate_submit_message(
         self,
         *,
@@ -86,11 +102,14 @@ class CandidateProfileSubmitHandlersMixin:
         )
         await self._telegram_client.send_message(
             chat_id=chat_id,
-            text=self._build_candidate_dashboard_message(
-                first_name=actor.first_name,
-                candidate=candidate,
-                statistics=stats,
-                created_now=False,
+            text=(
+                "✅ *Изменения сохранены.*\n\n"
+                + self._build_candidate_dashboard_message(
+                    first_name=actor.first_name,
+                    candidate=candidate,
+                    statistics=stats,
+                    created_now=False,
+                )
             ),
             parse_mode="Markdown",
             reply_markup=await self._build_candidate_dashboard_markup(actor.id),
@@ -111,8 +130,13 @@ class CandidateProfileSubmitHandlersMixin:
             return await self._clear_candidate_submit_state_and_send_message(
                 telegram_user_id=actor.id,
                 chat_id=chat_id,
-                text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                text=self._build_candidate_submit_status_message(
+                    title="Сессия истекла",
+                    status_line="⚠️ Сессия устарела.",
+                    details=["Нажми `/start`, чтобы выбрать роль заново."],
+                ),
                 action="session_expired",
+                parse_mode="Markdown",
             )
 
         try:
@@ -140,8 +164,13 @@ class CandidateProfileSubmitHandlersMixin:
             return await self._clear_candidate_submit_state_and_send_message(
                 telegram_user_id=actor.id,
                 chat_id=chat_id,
-                text="Профиль кандидата не найден. Нажми /start, чтобы начать заново.",
+                text=self._build_candidate_submit_status_message(
+                    title="Профиль не найден",
+                    status_line="⚠️ Профиль кандидата не найден.",
+                    details=["Нажми `/start`, чтобы начать заново."],
+                ),
                 action="candidate_not_found",
+                parse_mode="Markdown",
             )
 
         normalized_value = raw_value.strip() if isinstance(raw_value, str) else raw_value
@@ -152,9 +181,10 @@ class CandidateProfileSubmitHandlersMixin:
         ):
             await self._telegram_client.send_message(
                 chat_id=chat_id,
-                text=(
-                    "Пустое значение сохранить нельзя. "
-                    "Введи текст или отправь `-`, чтобы очистить поле."
+                text=self._build_candidate_submit_status_message(
+                    title="Нужно значение",
+                    status_line="⚠️ Пустое значение сохранить нельзя.",
+                    details=["Введи текст или отправь `-`, чтобы очистить поле."],
                 ),
                 parse_mode="Markdown",
             )
@@ -190,8 +220,13 @@ class CandidateProfileSubmitHandlersMixin:
             return await self._clear_candidate_submit_state_and_send_message(
                 telegram_user_id=actor.id,
                 chat_id=chat_id,
-                text="Неизвестное поле редактирования. Нажми /start, чтобы открыть меню заново.",
+                text=self._build_candidate_submit_status_message(
+                    title="Неизвестное поле",
+                    status_line="⚠️ Неизвестное поле редактирования.",
+                    details=["Нажми `/start`, чтобы открыть меню заново."],
+                ),
                 action="candidate_edit_invalid_field",
+                parse_mode="Markdown",
             )
 
         update_kwargs[field_name] = normalized_value

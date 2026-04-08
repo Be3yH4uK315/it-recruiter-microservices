@@ -15,10 +15,7 @@ class CandidateProfileMessagesMixin(ProfileSharedMessagesMixin):
         *,
         candidate: CandidateProfileSummary,
     ) -> str:
-        lines = [
-            "Кабинет кандидата > Профиль",
-            "",
-        ]
+        lines: list[str] = []
         lines.extend(
             CandidateProfileMessagesMixin._build_candidate_profile_core_lines(
                 candidate,
@@ -36,7 +33,11 @@ class CandidateProfileMessagesMixin(ProfileSharedMessagesMixin):
             )
         )
 
-        return "\n".join(lines)
+        return CandidateProfileMessagesMixin._build_screen_message(
+            section_path="Кабинет кандидата · Профиль",
+            title="Профиль кандидата",
+            body_lines=lines,
+        )
 
     @staticmethod
     def _build_candidate_dashboard_message(
@@ -46,7 +47,7 @@ class CandidateProfileMessagesMixin(ProfileSharedMessagesMixin):
         statistics: CandidateStatisticsView | None,
         created_now: bool,
     ) -> str:
-        header = "✅ Профиль кандидата создан." if created_now else "✅ Профиль кандидата загружен."
+        header = "✅ *Профиль кандидата создан.*" if created_now else "✅ *Профиль кандидата активен.*"
         display_name = (
             CandidateProfileMessagesMixin._as_clean_text(candidate.display_name) or "Имя не указано"
         )
@@ -54,34 +55,27 @@ class CandidateProfileMessagesMixin(ProfileSharedMessagesMixin):
             CandidateProfileMessagesMixin._as_clean_text(candidate.headline_role) or "Не указана"
         )
         lines = [
-            "Кабинет кандидата > Главная",
-            "",
             header,
             "",
             f"👤 *{CandidateProfileMessagesMixin._escape_markdown_text(display_name)}*",
-            "",
             "💼 *Должность:* " + CandidateProfileMessagesMixin._escape_markdown_text(headline_role),
-            "",
             "📊 *Статус:* "
             + CandidateProfileMessagesMixin._escape_markdown_text(
                 CandidateProfileMessagesMixin._humanize_candidate_status(candidate.status)
             ),
-            "",
             "👁 *Видимость контактов:* "
             + CandidateProfileMessagesMixin._escape_markdown_text(
                 CandidateProfileMessagesMixin._humanize_contacts_visibility_for_profile(
                     candidate.contacts_visibility
                 )
             ),
-            "",
         ]
-
-        lines.extend(
-            [
-                "Основные действия доступны в кнопках ниже.",
-            ]
+        return CandidateProfileMessagesMixin._build_screen_message(
+            section_path="Кабинет кандидата · Главная",
+            title="Главная",
+            body_lines=lines,
+            footer="Основные действия доступны в кнопках ниже.",
         )
-        return "\n".join(lines)
 
     @staticmethod
     def _build_candidate_stats_message(
@@ -95,16 +89,16 @@ class CandidateProfileMessagesMixin(ProfileSharedMessagesMixin):
             CandidateProfileMessagesMixin._as_clean_text(candidate.headline_role) or "Не указана"
         )
         lines = [
-            "Кабинет кандидата > Статистика",
-            "",
-            "📊 Статистика кандидата",
-            "",
             f"👤 *{CandidateProfileMessagesMixin._escape_markdown_text(display_name)}* — "
             f"{CandidateProfileMessagesMixin._escape_markdown_text(headline_role)}",
         ]
         if statistics is None:
             lines.extend(["", "⚠️ Статистика временно недоступна."])
-            return "\n".join(lines)
+            return CandidateProfileMessagesMixin._build_screen_message(
+                section_path="Кабинет кандидата · Статистика",
+                title="Статистика кандидата",
+                body_lines=lines,
+            )
 
         lines.extend(
             [
@@ -115,7 +109,11 @@ class CandidateProfileMessagesMixin(ProfileSharedMessagesMixin):
                 f"  • 🛠 *Ограниченный режим:* {'да' if statistics.is_degraded else 'нет'}",
             ]
         )
-        return "\n".join(lines)
+        return CandidateProfileMessagesMixin._build_screen_message(
+            section_path="Кабинет кандидата · Статистика",
+            title="Статистика кандидата",
+            body_lines=lines,
+        )
 
     @staticmethod
     def _build_candidate_pending_contact_requests_message(
@@ -125,9 +123,7 @@ class CandidateProfileMessagesMixin(ProfileSharedMessagesMixin):
         total_pages: int = 1,
     ) -> str:
         lines = [
-            f"Кабинет кандидата > Запросы контактов (стр. {page}/{total_pages})",
-            "",
-            "📨 *Ожидающие запросы на контакты:*",
+            f"Страница: *{page}/{total_pages}*",
             "",
         ]
         for index, item in enumerate(requests[:10], start=1):
@@ -141,17 +137,17 @@ class CandidateProfileMessagesMixin(ProfileSharedMessagesMixin):
                 "   🕒 *Создан:* "
                 + CandidateProfileMessagesMixin._escape_markdown_text(created_preview)
             )
-        return "\n".join(lines)
+        return CandidateProfileMessagesMixin._build_screen_message(
+            section_path="Кабинет кандидата · Запросы контактов",
+            title="Ожидающие запросы на контакты",
+            body_lines=lines,
+        )
 
     @staticmethod
     def _build_candidate_contact_request_details_message(
         details: ContactRequestDetailsView,
     ) -> str:
         lines = [
-            "Кабинет кандидата > Запросы контактов > Детали",
-            "",
-            "📨 Запрос контактов",
-            "",
             (
                 "🏷 *Request ID:* "
                 f"{CandidateProfileMessagesMixin._escape_markdown_text(str(details.id))}"
@@ -166,7 +162,11 @@ class CandidateProfileMessagesMixin(ProfileSharedMessagesMixin):
             ),
             f"✅ *Одобрено:* {'да' if details.granted else 'нет'}",
         ]
-        return "\n".join(lines)
+        return CandidateProfileMessagesMixin._build_screen_message(
+            section_path="Кабинет кандидата · Запросы контактов · Детали",
+            title="Запрос контактов",
+            body_lines=lines,
+        )
 
     @staticmethod
     def _build_candidate_contact_request_decision_message(
@@ -174,33 +174,44 @@ class CandidateProfileMessagesMixin(ProfileSharedMessagesMixin):
     ) -> str:
         status = result.status.strip().lower()
         if status == "granted":
-            return (
-                "Кабинет кандидата > Запросы контактов\n\n"
-                "✅ Ты одобрил доступ к контактам.\n\n"
-                "🏷 *Request ID:* "
-                + CandidateProfileMessagesMixin._escape_markdown_text(
-                    CandidateProfileMessagesMixin._as_clean_text(result.request_id) or "—"
-                )
+            return CandidateProfileMessagesMixin._build_screen_message(
+                section_path="Кабинет кандидата · Запросы контактов",
+                title="Решение по запросу",
+                body_lines=[
+                    "✅ Ты одобрил доступ к контактам.",
+                    "",
+                    "🏷 *Request ID:* "
+                    + CandidateProfileMessagesMixin._escape_markdown_text(
+                        CandidateProfileMessagesMixin._as_clean_text(result.request_id) or "—"
+                    ),
+                ],
             )
         if status == "rejected":
-            return (
-                "Кабинет кандидата > Запросы контактов\n\n"
-                "❌ Ты отклонил запрос доступа к контактам.\n\n"
+            return CandidateProfileMessagesMixin._build_screen_message(
+                section_path="Кабинет кандидата · Запросы контактов",
+                title="Решение по запросу",
+                body_lines=[
+                    "❌ Ты отклонил запрос доступа к контактам.",
+                    "",
+                    "🏷 *Request ID:* "
+                    + CandidateProfileMessagesMixin._escape_markdown_text(
+                        CandidateProfileMessagesMixin._as_clean_text(result.request_id) or "—"
+                    ),
+                ],
+            )
+        return CandidateProfileMessagesMixin._build_screen_message(
+            section_path="Кабинет кандидата · Запросы контактов",
+            title="Решение по запросу",
+            body_lines=[
+                "ℹ️ Ответ по запросу контактов сохранен.",
+                "",
+                "📊 *Статус:* "
+                + CandidateProfileMessagesMixin._escape_markdown_text(
+                    CandidateProfileMessagesMixin._as_clean_text(result.status) or "—"
+                ),
                 "🏷 *Request ID:* "
                 + CandidateProfileMessagesMixin._escape_markdown_text(
                     CandidateProfileMessagesMixin._as_clean_text(result.request_id) or "—"
-                )
-            )
-        return (
-            "Кабинет кандидата > Запросы контактов\n\n"
-            "ℹ️ Ответ по запросу контактов сохранен.\n\n"
-            "📊 *Статус:* "
-            + CandidateProfileMessagesMixin._escape_markdown_text(
-                CandidateProfileMessagesMixin._as_clean_text(result.status) or "—"
-            )
-            + "\n"
-            + "🏷 *Request ID:* "
-            + CandidateProfileMessagesMixin._escape_markdown_text(
-                CandidateProfileMessagesMixin._as_clean_text(result.request_id) or "—"
-            )
+                ),
+            ],
         )

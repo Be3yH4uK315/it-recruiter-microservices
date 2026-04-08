@@ -16,6 +16,21 @@ class ResolvedCallbackContext:
 
 
 class CallbackContextMixin:
+    def _build_role_selection_message(
+        self,
+        *,
+        actor: TelegramUser,
+        intro_note: str | None = None,
+    ) -> str:
+        text = self._build_screen_message(
+            section_path="Выбор роли",
+            title="Выбери роль",
+            body_lines=[f"Привет, {actor.first_name or 'пользователь'}.", "", "Выбери роль, в которой хочешь продолжить работу:"],
+        )
+        if intro_note:
+            text = f"{intro_note}\n\n{text}"
+        return text
+
     async def _send_role_selection(
         self,
         *,
@@ -23,16 +38,10 @@ class CallbackContextMixin:
         actor: TelegramUser,
         intro_note: str | None = None,
     ) -> None:
-        text = (
-            f"👋 Привет, {actor.first_name or 'пользователь'}.\n\n"
-            "Выбери роль, в которой хочешь продолжить работу:"
-        )
-        if intro_note:
-            text = f"{intro_note}\n\n{text}"
-
         await self._telegram_client.send_message(
             chat_id=chat_id,
-            text=text,
+            text=self._build_role_selection_message(actor=actor, intro_note=intro_note),
+            parse_mode="Markdown",
             reply_markup=await self._build_role_selection_markup(telegram_user_id=actor.id),
         )
 

@@ -343,8 +343,13 @@ class StatefulMessageHandlersMixin:
                 state_key=STATE_CANDIDATE_REG_HEADLINE_ROLE,
                 payload={"display_name": display_name},
                 chat_id=chat_id,
-                text="Теперь укажи основную роль в поиске, например: Python Developer.",
+                text=self._build_structured_prompt(
+                    title="Введи основную роль",
+                    instruction="Укажи основную роль, по которой кандидат ищет работу.",
+                    examples=["Python Developer"],
+                ),
                 action="candidate_registration_display_name_saved",
+                parse_mode="Markdown",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
 
@@ -357,11 +362,13 @@ class StatefulMessageHandlersMixin:
                     state_key=STATE_CANDIDATE_REG_DISPLAY_NAME,
                     payload=None,
                     chat_id=chat_id,
-                    text=(
-                        "Состояние регистрации сброшено. "
-                        "Введи отображаемое имя кандидата ещё раз."
+                    text=self._build_structured_prompt(
+                        title="Состояние регистрации сброшено",
+                        instruction="Введи отображаемое имя кандидата ещё раз.",
+                        examples=["Иван Петров"],
                     ),
                     action="candidate_registration_reset",
+                    parse_mode="Markdown",
                 )
 
             access_token = await self._auth_session_service.get_valid_access_token(
@@ -559,8 +566,12 @@ class StatefulMessageHandlersMixin:
                 payload=payload,
                 chat_id=chat_id,
                 text=(
-                    "Полная регистрация кандидата\n\n"
-                    "Укажи локацию (город/страна) или `-`, чтобы пропустить."
+                    self._build_structured_prompt(
+                        title="Укажи локацию",
+                        instruction="Введи город, страну или другой удобный формат.",
+                        examples=["Москва", "Berlin"],
+                        footer="Или отправь `-`, чтобы пропустить.",
+                    )
                 ),
                 action="candidate_registration_salary_saved",
                 parse_mode="Markdown",
@@ -577,8 +588,11 @@ class StatefulMessageHandlersMixin:
                 payload=payload,
                 chat_id=chat_id,
                 text=(
-                    "Полная регистрация кандидата\n\n"
-                    "Напиши кратко о себе или отправь `-`, чтобы пропустить."
+                    self._build_structured_prompt(
+                        title="Напиши кратко о себе",
+                        instruction="Коротко опиши профиль, сильные стороны или цели.",
+                        footer="Или отправь `-`, чтобы пропустить.",
+                    )
                 ),
                 action="candidate_registration_location_saved",
                 parse_mode="Markdown",
@@ -595,8 +609,12 @@ class StatefulMessageHandlersMixin:
                 payload=payload,
                 chat_id=chat_id,
                 text=(
-                    "Полная регистрация кандидата\n\n"
-                    "Укажи email или отправь `-`, чтобы пропустить."
+                    self._build_structured_prompt(
+                        title="Укажи email",
+                        instruction="Добавь контактный email для связи.",
+                        examples=["name@example.com"],
+                        footer="Или отправь `-`, чтобы пропустить.",
+                    )
                 ),
                 action="candidate_registration_about_saved",
                 parse_mode="Markdown",
@@ -626,8 +644,12 @@ class StatefulMessageHandlersMixin:
                 payload=payload,
                 chat_id=chat_id,
                 text=(
-                    "Полная регистрация кандидата\n\n"
-                    "Укажи телефон или отправь `-`, чтобы пропустить."
+                    self._build_structured_prompt(
+                        title="Укажи телефон",
+                        instruction="Добавь контактный номер телефона.",
+                        examples=["+7 999 123-45-67"],
+                        footer="Или отправь `-`, чтобы пропустить.",
+                    )
                 ),
                 action="candidate_registration_contact_email_saved",
                 parse_mode="Markdown",
@@ -657,14 +679,18 @@ class StatefulMessageHandlersMixin:
                 payload=payload,
                 chat_id=chat_id,
                 text=(
-                    "Полная регистрация кандидата\n\n"
-                    "Введи навыки, по одному на строку:\n"
-                    "`skill; kind; level`\n"
-                    "Разделитель: `;` (также поддерживается `|`).\n"
-                    "kind: `hard`, `soft`, `tool`, `language`.\n"
-                    "level: 1..5 (можно пусто).\n"
-                    "Пример: `Python; hard; 5`\n"
-                    "Чтобы пропустить, отправь `-`."
+                    self._build_structured_prompt(
+                        title="Введи навыки",
+                        instruction="Добавляй по одному навыку на строку.",
+                        details=[
+                            "`skill; kind; level`",
+                            "Разделитель: `;` или `|`.",
+                            "kind: `hard`, `soft`, `tool`, `language`.",
+                            "level: 1..5, можно оставить пустым.",
+                        ],
+                        examples=["Python; hard; 5"],
+                        footer="Чтобы пропустить, отправь `-`.",
+                    )
                 ),
                 action="candidate_registration_contact_phone_saved",
                 parse_mode="Markdown",
@@ -689,12 +715,16 @@ class StatefulMessageHandlersMixin:
                 payload=payload,
                 chat_id=chat_id,
                 text=(
-                    "Полная регистрация кандидата\n\n"
-                    "Введи образование, по одному на строку:\n"
-                    "`level; institution; year`\n"
-                    "Разделитель: `;` (также поддерживается `|`).\n"
-                    "Пример: `Bachelor; NSU; 2022`\n"
-                    "Чтобы пропустить, отправь `-`."
+                    self._build_structured_prompt(
+                        title="Введи образование",
+                        instruction="Добавляй по одной записи на строку.",
+                        details=[
+                            "`level; institution; year`",
+                            "Разделитель: `;` или `|`.",
+                        ],
+                        examples=["Bachelor; NSU; 2022"],
+                        footer="Чтобы пропустить, отправь `-`.",
+                    )
                 ),
                 action="candidate_registration_skills_saved",
                 parse_mode="Markdown",
@@ -719,14 +749,19 @@ class StatefulMessageHandlersMixin:
                 payload=payload,
                 chat_id=chat_id,
                 text=(
-                    "Полная регистрация кандидата\n\n"
-                    "Введи опыт, по одному на строку:\n"
-                    "`company; position; start_date; end_date; responsibilities`\n"
-                    "Разделитель: `;` (также поддерживается `|`).\n"
-                    "Дата: `YYYY-MM-DD`, `end_date` можно пустым.\n"
-                    "Пример: `Acme; Backend Developer; 2023-01-01; "
-                    "2024-02-01; FastAPI и PostgreSQL`\n"
-                    "Чтобы пропустить, отправь `-`."
+                    self._build_structured_prompt(
+                        title="Введи опыт",
+                        instruction="Добавляй по одной записи на строку.",
+                        details=[
+                            "`company; position; start_date; end_date; responsibilities`",
+                            "Разделитель: `;` или `|`.",
+                            "Дата: `YYYY-MM-DD`, `end_date` можно оставить пустым.",
+                        ],
+                        examples=[
+                            "Acme; Backend Developer; 2023-01-01; 2024-02-01; FastAPI и PostgreSQL"
+                        ],
+                        footer="Чтобы пропустить, отправь `-`.",
+                    )
                 ),
                 action="candidate_registration_education_saved",
                 parse_mode="Markdown",
@@ -751,13 +786,17 @@ class StatefulMessageHandlersMixin:
                 payload=payload,
                 chat_id=chat_id,
                 text=(
-                    "Полная регистрация кандидата\n\n"
-                    "Введи проекты, по одному на строку:\n"
-                    "`title; description; link1,link2`\n"
-                    "Разделитель между полями: `;` (также поддерживается `|`).\n"
-                    "Ссылки опциональны, только http/https.\n"
-                    "Пример: `ATS Bot; Telegram recruiting bot; https://github.com/org/repo`\n"
-                    "Чтобы пропустить, отправь `-`."
+                    self._build_structured_prompt(
+                        title="Введи проекты",
+                        instruction="Добавляй по одному проекту на строку.",
+                        details=[
+                            "`title; description; link1,link2`",
+                            "Разделитель между полями: `;` или `|`.",
+                            "Ссылки опциональны, только `http`/`https`.",
+                        ],
+                        examples=["ATS Bot; Telegram recruiting bot; https://github.com/org/repo"],
+                        footer="Чтобы пропустить, отправь `-`.",
+                    )
                 ),
                 action="candidate_registration_experiences_saved",
                 parse_mode="Markdown",
@@ -1022,8 +1061,12 @@ class StatefulMessageHandlersMixin:
                 payload=payload,
                 chat_id=chat_id,
                 text=(
-                    "Telegram-контакт компании синхронизирован автоматически.\n"
-                    "Введи `email` компании или отправь `-`, чтобы пропустить."
+                    self._build_structured_prompt(
+                        title="Введи email компании",
+                        instruction="Telegram-контакт компании синхронизирован автоматически.",
+                        examples=["jobs@example.com"],
+                        footer="Или отправь `-`, чтобы пропустить.",
+                    )
                 ),
                 action="employer_registration_contact_telegram_saved",
                 parse_mode="Markdown",
@@ -1052,7 +1095,12 @@ class StatefulMessageHandlersMixin:
                 state_key=STATE_EMPLOYER_REG_CONTACT_PHONE,
                 payload=payload,
                 chat_id=chat_id,
-                text="Введи `phone` компании или отправь `-`, чтобы пропустить.",
+                text=self._build_structured_prompt(
+                    title="Введи phone компании",
+                    instruction="Укажи контактный телефон компании.",
+                    examples=["+7 999 123-45-67"],
+                    footer="Или отправь `-`, чтобы пропустить.",
+                ),
                 action="employer_registration_contact_email_saved",
                 parse_mode="Markdown",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
@@ -1080,7 +1128,12 @@ class StatefulMessageHandlersMixin:
                 state_key=STATE_EMPLOYER_REG_CONTACT_WEBSITE,
                 payload=payload,
                 chat_id=chat_id,
-                text="Введи `website` компании или отправь `-`, чтобы пропустить.",
+                text=self._build_structured_prompt(
+                    title="Введи website компании",
+                    instruction="Укажи адрес сайта компании.",
+                    examples=["https://company.com"],
+                    footer="Или отправь `-`, чтобы пропустить.",
+                ),
                 action="employer_registration_contact_phone_saved",
                 parse_mode="Markdown",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
@@ -1729,16 +1782,17 @@ class StatefulMessageHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Регистрация кандидата\n\n"
-                "Выбери форматы работы кнопками ниже.\n\n"
-                f"Текущий выбор: {self._format_work_modes_choice_for_prompt(payload)}"
-                if is_registration
-                else "Кабинет кандидата > Редактирование\n\n"
-                "✏️ Редактирование\n\n"
-                "Выбери форматы работы кнопками ниже.\n\n"
-                f"Текущий выбор: {self._format_work_modes_choice_for_prompt(payload)}"
+            text=self._build_structured_prompt(
+                section_path=(
+                    "Регистрация кандидата"
+                    if is_registration
+                    else "Кабинет кандидата · Редактирование"
+                ),
+                title="Выбери форматы работы",
+                instruction="Используй кнопки ниже, чтобы отметить подходящие варианты.",
+                current_value=self._format_work_modes_choice_for_prompt(payload),
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_candidate_work_modes_selector_markup(
                 telegram_user_id=actor.id,
                 selected_modes=selected,
@@ -1790,7 +1844,13 @@ class StatefulMessageHandlersMixin:
             await self._render_callback_screen(
                 callback=callback,
                 actor=actor,
-                text=("Регистрация кандидата\n\n" "Теперь выбери видимость контактов."),
+                text=self._build_structured_prompt(
+                    section_path="Регистрация кандидата",
+                    title="Выбери видимость контактов",
+                    instruction="Используй кнопки ниже, чтобы задать режим приватности.",
+                    current_value="—",
+                ),
+                parse_mode="Markdown",
                 reply_markup=await self._build_candidate_contacts_visibility_selector_markup(
                     telegram_user_id=actor.id,
                     selected_visibility=None,
@@ -1836,12 +1896,13 @@ class StatefulMessageHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет кандидата > Редактирование\n\n"
-                "✏️ Редактирование\n\n"
-                "Выбери форматы работы кнопками ниже.\n\n"
-                "Текущий выбор: —"
+            text=self._build_structured_prompt(
+                section_path="Кабинет кандидата · Редактирование",
+                title="Выбери форматы работы",
+                instruction="Используй кнопки ниже, чтобы отметить подходящие варианты.",
+                current_value="—",
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_candidate_work_modes_selector_markup(
                 telegram_user_id=actor.id,
                 selected_modes=[],
@@ -1900,11 +1961,13 @@ class StatefulMessageHandlersMixin:
                 await self._render_callback_screen(
                     callback=callback,
                     actor=actor,
-                    text=(
-                        "Регистрация кандидата\n\n"
-                        "Выбери форматы работы кнопками ниже.\n\n"
-                        "Текущий выбор: —"
+                    text=self._build_structured_prompt(
+                        section_path="Регистрация кандидата",
+                        title="Выбери форматы работы",
+                        instruction="Используй кнопки ниже, чтобы отметить подходящие варианты.",
+                        current_value="—",
                     ),
+                    parse_mode="Markdown",
                     reply_markup=await self._build_candidate_work_modes_selector_markup(
                         telegram_user_id=actor.id,
                         selected_modes=[],
@@ -1929,7 +1992,13 @@ class StatefulMessageHandlersMixin:
             await self._render_callback_screen(
                 callback=callback,
                 actor=actor,
-                text=("Регистрация кандидата\n\n" "Выбери уровень английского."),
+                text=self._build_structured_prompt(
+                    section_path="Регистрация кандидата",
+                    title="Выбери уровень английского",
+                    instruction="Используй кнопки ниже, чтобы указать актуальный уровень.",
+                    current_value="—",
+                ),
+                parse_mode="Markdown",
                 reply_markup=await self._build_candidate_english_level_selector_markup(
                     telegram_user_id=actor.id,
                     selected_level=None,
@@ -1995,11 +2064,12 @@ class StatefulMessageHandlersMixin:
             await self._render_callback_screen(
                 callback=callback,
                 actor=actor,
-                text=(
-                    "Регистрация кандидата\n\n"
-                    "Укажи зарплату в формате: `min max currency`.\n"
-                    "Пример: `250000 350000 RUB`.\n"
-                    "Чтобы пропустить, отправь `-`."
+                text=self._build_structured_prompt(
+                    section_path="Регистрация кандидата",
+                    title="Укажи зарплату",
+                    instruction="Можно указать диапазон, только минимум или только максимум.",
+                    examples=["250000 350000 RUB", "от 250000 RUB", "до 350000 RUB"],
+                    footer="Чтобы пропустить шаг, отправь `-`.",
                 ),
                 parse_mode="Markdown",
             )

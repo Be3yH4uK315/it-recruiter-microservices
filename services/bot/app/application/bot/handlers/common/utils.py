@@ -152,15 +152,16 @@ class CommonUtilsMixin:
         example: str,
         allow_clear: bool = True,
     ) -> str:
-        prompt = (
-            f"Введи {field_label}. Минимум {cls._PROFILE_NAME_MIN_LEN} символа. "
-            f"Можно использовать {cls._PROFILE_NAME_ALLOWED_EXTRA_CHARS_PROMPT}."
+        footer = "Чтобы очистить поле, отправь `-`." if allow_clear else None
+        return cls._build_structured_prompt(
+            title=f"Введи {field_label}",
+            instruction=(
+                f"Минимум {cls._PROFILE_NAME_MIN_LEN} символа. "
+                f"Можно использовать {cls._PROFILE_NAME_ALLOWED_EXTRA_CHARS_PROMPT}."
+            ),
+            examples=[example] if example else None,
+            footer=footer,
         )
-        if example:
-            prompt = f"{prompt} Например: `{example}`."
-        if allow_clear:
-            prompt = f"{prompt} Чтобы очистить поле, отправь `-`."
-        return prompt
 
     @staticmethod
     def _build_profile_contact_prompt(
@@ -169,14 +170,56 @@ class CommonUtilsMixin:
         example: str,
         allow_clear: bool = True,
     ) -> str:
-        prompt = f"Введи {contact_label}. Например: `{example}`."
-        if allow_clear:
-            prompt = f"{prompt} Чтобы очистить поле, отправь `-`."
-        return prompt
+        footer = "Чтобы очистить поле, отправь `-`." if allow_clear else None
+        return CommonUtilsMixin._build_structured_prompt(
+            title=f"Введи {contact_label}",
+            instruction="Укажи корректное значение для этого поля.",
+            examples=[example],
+            footer=footer,
+        )
 
     @staticmethod
     def _build_profile_website_prompt() -> str:
-        return (
-            "Введи корректный website, например `https://company.com`. "
-            "Чтобы очистить поле, отправь `-`."
+        return CommonUtilsMixin._build_structured_prompt(
+            title="Введи website",
+            instruction="Укажи корректный адрес сайта.",
+            examples=["https://company.com"],
+            footer="Чтобы очистить поле, отправь `-`.",
         )
+
+    @staticmethod
+    def _build_structured_prompt(
+        *,
+        title: str,
+        instruction: str,
+        section_path: str | None = None,
+        details: list[str] | None = None,
+        examples: list[str] | None = None,
+        footer: str | None = None,
+        current_value: str | None = None,
+    ) -> str:
+        lines: list[str] = []
+        if section_path:
+            lines.extend([section_path, ""])
+
+        lines.extend([f"*{title}*", "", instruction])
+
+        if details:
+            lines.append("")
+            lines.extend(details)
+
+        if examples:
+            lines.extend(["", "Примеры:"])
+            lines.extend(f"`{example}`" for example in examples if example)
+
+        if footer:
+            lines.extend(["", footer])
+
+        if current_value is not None:
+            preview = current_value.strip() or "—"
+            if len(preview) > 240:
+                preview = f"{preview[:240].rstrip()}…"
+            preview = preview.replace("`", "'")
+            lines.extend(["", f"*Текущий выбор:* `{preview}`"])
+
+        return "\n".join(lines)

@@ -38,41 +38,69 @@ jobs:
 
   lint:
     needs: [ detect-changes ]
-    if: needs.detect-changes.outputs[matrix.service] == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ auth, bot, candidate, employer, file, search ]
+        include:
+          - service: auth
+            changed: ${{ needs.detect-changes.outputs.auth == 'true' }}
+          - service: bot
+            changed: ${{ needs.detect-changes.outputs.bot == 'true' }}
+          - service: candidate
+            changed: ${{ needs.detect-changes.outputs.candidate == 'true' }}
+          - service: employer
+            changed: ${{ needs.detect-changes.outputs.employer == 'true' }}
+          - service: file
+            changed: ${{ needs.detect-changes.outputs.file == 'true' }}
+          - service: search
+            changed: ${{ needs.detect-changes.outputs.search == 'true' }}
     steps:
       - uses: actions/checkout@v4
       
       - name: Set up Python
+        if: github.event_name != 'pull_request' || matrix.changed
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           
       - name: Install Linters
+        if: github.event_name != 'pull_request' || matrix.changed
         run: pip install -r requirements-dev-common.txt
 
       - name: Check formatting with black
+        if: github.event_name != 'pull_request' || matrix.changed
         run: black --check services/${{ matrix.service }}/app
 
       - name: Check import sorting with isort
+        if: github.event_name != 'pull_request' || matrix.changed
         run: isort --check-only services/${{ matrix.service }}/app
 
       - name: Lint with flake8
+        if: github.event_name != 'pull_request' || matrix.changed
         run: flake8 services/${{ matrix.service }}/app --count --max-line-length=100 --extend-ignore=E203,W503 --show-source --statistics
 
   type-check:
     needs: [ detect-changes, lint ]
-    if: needs.detect-changes.outputs[matrix.service] == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ auth, bot, candidate, employer, file, search ]
+        include:
+          - service: auth
+            changed: ${{ needs.detect-changes.outputs.auth == 'true' }}
+          - service: bot
+            changed: ${{ needs.detect-changes.outputs.bot == 'true' }}
+          - service: candidate
+            changed: ${{ needs.detect-changes.outputs.candidate == 'true' }}
+          - service: employer
+            changed: ${{ needs.detect-changes.outputs.employer == 'true' }}
+          - service: file
+            changed: ${{ needs.detect-changes.outputs.file == 'true' }}
+          - service: search
+            changed: ${{ needs.detect-changes.outputs.search == 'true' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - if: github.event_name != 'pull_request' || matrix.changed
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -81,6 +109,7 @@ jobs:
             services/${{ matrix.service }}/requirements.txt
 
       - name: Install dependencies
+        if: github.event_name != 'pull_request' || matrix.changed
         run: |
           pip install -r requirements-dev-common.txt
           if [ -f services/${{ matrix.service }}/requirements-dev.txt ]; then
@@ -90,6 +119,7 @@ jobs:
           fi
 
       - name: Run mypy baseline checks
+        if: github.event_name != 'pull_request' || matrix.changed
         run: |
           set -euo pipefail
           cd services/${{ matrix.service }}
@@ -124,7 +154,7 @@ jobs:
 
   test-auth:
     needs: [ detect-changes, lint, type-check ]
-    if: needs.detect-changes.outputs.auth == 'true' || github.event_name == 'push'
+    if: github.event_name != 'pull_request' || needs.detect-changes.outputs.auth == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -170,7 +200,7 @@ jobs:
 
   test-bot:
     needs: [ detect-changes, lint, type-check ]
-    if: needs.detect-changes.outputs.bot == 'true' || github.event_name == 'push'
+    if: github.event_name != 'pull_request' || needs.detect-changes.outputs.bot == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -208,7 +238,7 @@ jobs:
 
   test-candidate:
     needs: [ detect-changes, lint, type-check ]
-    if: needs.detect-changes.outputs.candidate == 'true' || github.event_name == 'push'
+    if: github.event_name != 'pull_request' || needs.detect-changes.outputs.candidate == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -261,7 +291,7 @@ jobs:
 
   test-employer:
     needs: [ detect-changes, lint, type-check ]
-    if: needs.detect-changes.outputs.employer == 'true' || github.event_name == 'push'
+    if: github.event_name != 'pull_request' || needs.detect-changes.outputs.employer == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -308,7 +338,7 @@ jobs:
 
   test-file:
     needs: [ detect-changes, lint, type-check ]
-    if: needs.detect-changes.outputs.file == 'true' || github.event_name == 'push'
+    if: github.event_name != 'pull_request' || needs.detect-changes.outputs.file == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -357,7 +387,7 @@ jobs:
 
   test-search:
     needs: [ detect-changes, lint, type-check ]
-    if: needs.detect-changes.outputs.search == 'true' || github.event_name == 'push'
+    if: github.event_name != 'pull_request' || needs.detect-changes.outputs.search == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -442,7 +472,19 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ auth, bot, candidate, employer, file, search ]
+        include:
+          - service: auth
+            changed: ${{ needs.detect-changes.outputs.auth == 'true' }}
+          - service: bot
+            changed: ${{ needs.detect-changes.outputs.bot == 'true' }}
+          - service: candidate
+            changed: ${{ needs.detect-changes.outputs.candidate == 'true' }}
+          - service: employer
+            changed: ${{ needs.detect-changes.outputs.employer == 'true' }}
+          - service: file
+            changed: ${{ needs.detect-changes.outputs.file == 'true' }}
+          - service: search
+            changed: ${{ needs.detect-changes.outputs.search == 'true' }}
     steps:
       - uses: actions/checkout@v4
       
@@ -450,7 +492,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
         
       - name: Build Docker image
-        if: needs.detect-changes.outputs[matrix.service] == 'true'
+        if: matrix.changed
         uses: docker/build-push-action@v5
         with:
           context: ./services/${{ matrix.service }}

@@ -21,6 +21,45 @@ from app.application.common.contracts import CandidateProfileSummary
 
 class ProfileSharedMessagesMixin:
     @staticmethod
+    def _build_screen_message(
+        *,
+        section_path: str,
+        title: str,
+        body_lines: list[str] | None = None,
+        footer: str | None = None,
+    ) -> str:
+        lines = [
+            f"🧭 *{ProfileSharedMessagesMixin._escape_markdown_text(section_path)}*",
+            "",
+            f"*{ProfileSharedMessagesMixin._escape_markdown_text(title)}*",
+        ]
+        if body_lines:
+            lines.append("")
+            lines.extend(body_lines)
+        if footer:
+            lines.extend(["", footer])
+        return "\n".join(lines)
+
+    @staticmethod
+    def _build_status_screen(
+        *,
+        section_path: str,
+        title: str,
+        status_line: str,
+        details: list[str] | None = None,
+        footer: str | None = None,
+    ) -> str:
+        body_lines = [status_line]
+        if details:
+            body_lines.extend([""] + details)
+        return ProfileSharedMessagesMixin._build_screen_message(
+            section_path=section_path,
+            title=title,
+            body_lines=body_lines,
+            footer=footer,
+        )
+
+    @staticmethod
     def _build_candidate_profile_core_lines(
         candidate: CandidateProfileSummary,
         *,

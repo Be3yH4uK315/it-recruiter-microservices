@@ -18,6 +18,20 @@ logger = get_logger(__name__)
 
 
 class CandidateFileContactHandlersMixin:
+    def _build_candidate_file_status_message(
+        self,
+        *,
+        title: str,
+        status_line: str,
+        details: list[str] | None = None,
+    ) -> str:
+        return self._build_status_screen(
+            section_path="Кабинет кандидата · Файлы",
+            title=title,
+            status_line=status_line,
+            details=details,
+        )
+
     async def _handle_candidate_file_upload_state(
         self,
         *,
@@ -33,7 +47,12 @@ class CandidateFileContactHandlersMixin:
             await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
             await self._telegram_client.send_message(
                 chat_id=chat_id,
-                text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                text=self._build_candidate_file_status_message(
+                    title="Сессия истекла",
+                    status_line="⚠️ Сессия устарела.",
+                    details=["Нажми `/start`, чтобы выбрать роль заново."],
+                ),
+                parse_mode="Markdown",
             )
             return {"status": "processed", "action": "session_expired"}
 
@@ -60,7 +79,12 @@ class CandidateFileContactHandlersMixin:
             await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
             await self._telegram_client.send_message(
                 chat_id=chat_id,
-                text="Профиль кандидата не найден. Нажми /start, чтобы начать заново.",
+                text=self._build_candidate_file_status_message(
+                    title="Профиль не найден",
+                    status_line="⚠️ Профиль кандидата не найден.",
+                    details=["Нажми `/start`, чтобы начать заново."],
+                ),
+                parse_mode="Markdown",
             )
             return {"status": "processed", "action": "candidate_not_found"}
 
@@ -121,7 +145,12 @@ class CandidateFileContactHandlersMixin:
             )
             await self._telegram_client.send_message(
                 chat_id=chat_id,
-                text="Не удалось обработать файл. Попробуй отправить его ещё раз.",
+                text=self._build_candidate_file_status_message(
+                    title="Файл не обработан",
+                    status_line="⚠️ Не удалось обработать файл.",
+                    details=["Попробуй отправить его ещё раз."],
+                ),
+                parse_mode="Markdown",
             )
             return {"status": "processed", "action": "candidate_file_upload_failed"}
         mark_file_upload(
@@ -148,7 +177,14 @@ class CandidateFileContactHandlersMixin:
         except CandidateGatewayError:
             refreshed = None
         if refreshed is None:
-            await self._telegram_client.send_message(chat_id=chat_id, text=success_text)
+            await self._telegram_client.send_message(
+                chat_id=chat_id,
+                text=self._build_candidate_file_status_message(
+                    title="Файл обновлён",
+                    status_line=f"✅ {success_text}",
+                ),
+                parse_mode="Markdown",
+            )
             return {"status": "processed", "action": action_name}
 
         stats = await self._safe_get_candidate_statistics(
@@ -157,7 +193,7 @@ class CandidateFileContactHandlersMixin:
         )
         await self._telegram_client.send_message(
             chat_id=chat_id,
-            text=f"{success_text}\n\n"
+            text=f"✅ *{success_text}*\n\n"
             + self._build_candidate_dashboard_message(
                 first_name=actor.first_name,
                 candidate=refreshed,
@@ -274,14 +310,18 @@ class CandidateFileContactHandlersMixin:
             await self._render_callback_screen(
                 callback=callback,
                 actor=actor,
-                text=success_text,
+                text=self._build_candidate_file_status_message(
+                    title="Файл удалён",
+                    status_line=f"✅ {success_text}",
+                ),
+                parse_mode="Markdown",
             )
             return {"status": "processed", "action": action_name}
 
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=f"{success_text}\n\n"
+            text=f"✅ *{success_text}*\n\n"
             + self._build_candidate_dashboard_message(
                 first_name=actor.first_name,
                 candidate=updated,
@@ -441,11 +481,13 @@ class CandidateFileContactHandlersMixin:
             await self._render_callback_screen(
                 callback=callback,
                 actor=actor,
-                text=(
-                    "Кабинет кандидата > Запросы контактов\n\n"
-                    "Сейчас нет ожидающих запросов на открытие контактов.\n"
-                    "Если работодатель отправит новый запрос, он появится здесь."
+                text=self._build_status_screen(
+                    section_path="Кабинет кандидата · Запросы контактов",
+                    title="Запросы контактов",
+                    status_line="ℹ️ Сейчас нет ожидающих запросов на открытие контактов.",
+                    details=["Если работодатель отправит новый запрос, он появится здесь."],
                 ),
+                parse_mode="Markdown",
                 reply_markup=await self._build_candidate_contact_requests_list_markup(
                     telegram_user_id=actor.id,
                     requests=[],
@@ -542,7 +584,13 @@ class CandidateFileContactHandlersMixin:
             await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
             await self._telegram_client.send_message(
                 chat_id=chat_id,
-                text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                text=self._build_status_screen(
+                    section_path="Кабинет кандидата · Запросы контактов",
+                    title="Сессия истекла",
+                    status_line="⚠️ Сессия устарела.",
+                    details=["Нажми `/start`, чтобы выбрать роль заново."],
+                ),
+                parse_mode="Markdown",
             )
             return {"status": "processed", "action": "session_expired"}
 

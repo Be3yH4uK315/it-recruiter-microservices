@@ -104,12 +104,17 @@ class EmployerDashboardHandlersMixin:
             state_key=STATE_EMPLOYER_SEARCH_TITLE,
             payload=payload,
             chat_id=self._resolve_chat_id(callback, actor),
-            text=(
-                "Кабинет работодателя > Поиск > Новый поиск\n\n🧭 Мастер поиска\n\n"
-                "🆕 Новый поиск кандидатов\n\n"
-                "Введи название поиска.\n"
-                "Например: Python backend middle."
+            text=self._build_screen_message(
+                section_path="Кабинет работодателя · Поиск · Новый поиск",
+                title="Мастер поиска",
+                body_lines=[
+                    "*Введи название поиска*",
+                    "",
+                    "Например:",
+                    "`Python backend middle`",
+                ],
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_employer_search_wizard_controls_markup(
                 telegram_user_id=actor.id,
                 step="title",
@@ -133,11 +138,12 @@ class EmployerDashboardHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет работодателя > Редактирование профиля\n\n"
-                "✏️ Редактирование кабинета работодателя\n\n"
-                "Выбери раздел, который хочешь обновить."
+            text=self._build_screen_message(
+                section_path="Кабинет работодателя · Редактирование профиля",
+                title="Редактирование кабинета работодателя",
+                body_lines=["Выбери раздел, который хочешь обновить."],
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_employer_edit_section_markup(telegram_user_id=actor.id),
         )
         return {"status": "processed", "action": "employer_menu_open_edit_section"}
@@ -157,11 +163,12 @@ class EmployerDashboardHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет работодателя > Редактирование профиля\n\n"
-                "✏️ Редактирование кабинета работодателя\n\n"
-                "Выбери раздел, который хочешь обновить."
+            text=self._build_screen_message(
+                section_path="Кабинет работодателя · Редактирование профиля",
+                title="Редактирование кабинета работодателя",
+                body_lines=["Выбери раздел, который хочешь обновить."],
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_employer_edit_section_markup(
                 telegram_user_id=actor.id
             ),
@@ -228,11 +235,14 @@ class EmployerDashboardHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет работодателя > Файлы компании\n\n"
-                "📁 Файлы компании\n\n"
-                "Здесь можно загрузить, скачать или удалить аватар и документ компании."
+            text=self._build_screen_message(
+                section_path="Кабинет работодателя · Файлы компании",
+                title="Файлы компании",
+                body_lines=[
+                    "Здесь можно загрузить, скачать или удалить аватар и документ компании."
+                ],
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_employer_files_section_markup(
                 telegram_user_id=actor.id,
                 has_avatar=bool(employer.avatar_file_id or employer.avatar_download_url),
@@ -311,11 +321,14 @@ class EmployerDashboardHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет работодателя > Поиск\n\n"
-                "🔎 Поиск кандидатов\n\n"
-                "Выбери действие: активная сессия, список поисков, избранные или открытые контакты."
+            text=self._build_screen_message(
+                section_path="Кабинет работодателя · Поиск",
+                title="Поиск кандидатов",
+                body_lines=[
+                    "Выбери действие: активная сессия, список поисков, избранные или открытые контакты."
+                ],
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_employer_search_section_markup(
                 telegram_user_id=actor.id,
                 has_active_search=has_active_search,
@@ -397,11 +410,16 @@ class EmployerDashboardHandlersMixin:
             await self._render_callback_screen(
                 callback=callback,
                 actor=actor,
-                text=(
-                    "Кабинет работодателя > Поиск > Активная сессия\n\n"
-                    "ℹ️ Активный поиск не найден.\n\n"
-                    "Создай новый поиск или открой список всех поисков."
+                text=self._build_screen_message(
+                    section_path="Кабинет работодателя · Поиск · Активная сессия",
+                    title="Активная сессия",
+                    body_lines=[
+                        "ℹ️ Активный поиск не найден.",
+                        "",
+                        "Создай новый поиск или открой список всех поисков.",
+                    ],
                 ),
+                parse_mode="Markdown",
                 reply_markup=await self._build_employer_search_section_markup(
                     telegram_user_id=actor.id,
                     has_active_search=False,
@@ -417,12 +435,14 @@ class EmployerDashboardHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет работодателя > Поиск > Активная сессия\n\n"
-                "🟢 Активная сессия\n\n"
-                f"🔎 Название: {active_search.title}\n"
-                f"💼 Роль: {active_search.role or '—'}\n"
-                f"📊 Статус: {self._humanize_search_status(active_search.status)}"
+            text=self._build_screen_message(
+                section_path="Кабинет работодателя · Поиск · Активная сессия",
+                title="Активная сессия",
+                body_lines=[
+                    f"🔎 *Название:* {active_search.title}",
+                    f"💼 *Роль:* {active_search.role or '—'}",
+                    f"📊 *Статус:* {self._humanize_search_status(active_search.status)}",
+                ],
             ),
             parse_mode="Markdown",
             reply_markup=await self._build_open_search_markup(

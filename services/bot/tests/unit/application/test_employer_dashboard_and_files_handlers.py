@@ -9,6 +9,7 @@ from app.application.bot.constants import STATE_EMPLOYER_FILE_AWAIT_AVATAR
 from app.application.bot.handlers.common.search_utils import SearchUtilsMixin
 from app.application.bot.handlers.employer.dashboard import EmployerDashboardHandlersMixin
 from app.application.bot.handlers.employer.files import EmployerFileHandlersMixin
+from app.application.bot.ui.profile_message_mixins.shared import ProfileSharedMessagesMixin
 from app.application.common.contracts import EmployerProfileSummary, SearchSessionSummary
 from app.application.common.gateway_errors import EmployerGatewayError
 from app.application.common.telegram_api import TelegramApiError
@@ -124,7 +125,9 @@ class DummyEmployerFileFlowService:
             raise RuntimeError("boom")
 
 
-class DummyEmployerDashboard(EmployerDashboardHandlersMixin, SearchUtilsMixin):
+class DummyEmployerDashboard(
+    EmployerDashboardHandlersMixin, SearchUtilsMixin, ProfileSharedMessagesMixin
+):
     def __init__(self) -> None:
         self._auth_session_service = DummyAuthService()
         self._telegram_client = DummyTelegramClient()
@@ -201,7 +204,7 @@ class DummyEmployerDashboard(EmployerDashboardHandlersMixin, SearchUtilsMixin):
         return value or "—"
 
 
-class DummyEmployerFiles(EmployerFileHandlersMixin, SearchUtilsMixin):
+class DummyEmployerFiles(EmployerFileHandlersMixin, SearchUtilsMixin, ProfileSharedMessagesMixin):
     def __init__(self) -> None:
         self._auth_session_service = DummyAuthService()
         self._telegram_client = DummyTelegramClient()
@@ -347,6 +350,13 @@ async def test_employer_dashboard_sections_and_help_stats() -> None:
     assert start_wizard["action"] == "employer_search_create_started"
     assert help_result["action"] == "employer_help"
     assert stats_result["action"] == "employer_stats"
+    render_calls = [payload for name, payload in sut.calls if name == "render"]
+    wizard_calls = [payload for name, payload in sut.calls if name == "wizard"]
+    assert any("Поиск кандидатов" in call["text"] for call in render_calls)
+    assert any("Активная сессия" in call["text"] for call in render_calls)
+    assert any("Файлы компании" in call["text"] for call in render_calls)
+    assert any("Редактирование кабинета работодателя" in call["text"] for call in render_calls)
+    assert wizard_calls and "Мастер поиска" in wizard_calls[0]["text"]
 
 
 @pytest.mark.asyncio
@@ -494,5 +504,5 @@ async def test_employer_download_and_delete_file_branches() -> None:
     assert delete_doc["action"] == "employer_document_deleted"
     render_calls = [payload for name, payload in sut.calls if name == "render"]
     assert len(render_calls) == 2
-    assert "Аватар компании удалён." in render_calls[0]["text"]
-    assert "Документ компании удалён." in render_calls[1]["text"]
+    assert "✅ *Аватар компании удалён.*" in render_calls[0]["text"]
+    assert "✅ *Документ компании удалён.*" in render_calls[1]["text"]

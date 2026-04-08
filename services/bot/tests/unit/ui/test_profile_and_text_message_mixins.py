@@ -130,11 +130,12 @@ def test_candidate_profile_messages_cover_stats_requests_and_decisions() -> None
         ContactRequestDecisionView(granted=False, status="pending", request_id=uuid4())
     )
 
-    assert "Кабинет кандидата > Профиль" in profile
-    assert "✅ Профиль кандидата создан." in dashboard
+    assert "🧭 *Кабинет кандидата" in profile
+    assert "*Главная*" in dashboard
+    assert "✅ *Профиль кандидата создан.*" in dashboard
     assert "временно недоступна" in stats_none
     assert "Ограниченный режим" in stats_ok
-    assert "стр. 2/5" in pending
+    assert "Страница: *2/5*" in pending
     assert "Запрос контактов" in details
     assert "одобрил" in granted
     assert "отклонил" in rejected
@@ -178,7 +179,8 @@ def test_employer_profile_messages_cover_stats_and_contact_access_statuses() -> 
         ContactAccessResultView(granted=False, status="unknown")
     )
 
-    assert "Кабинет работодателя > Главная" in dashboard
+    assert "🧭 *Кабинет работодателя" in dashboard
+    assert "*Главная*" in dashboard
     assert "Контакты компании" in profile
     assert "временно недоступна" in stats_none
     assert "Открытых контактов" in stats_ok
@@ -213,6 +215,7 @@ def test_search_profile_messages_cover_empty_collection_and_next_candidate_paths
     assert "Контакты" in collection
     assert "Поиск временно ограничен" in none_degraded
     assert "Кандидаты по этому поиску закончились" in none_regular
+    assert "🧭 *Кабинет работодателя" in with_candidate
     assert "Карточка кандидата" in with_candidate
 
 
@@ -235,8 +238,9 @@ def test_bot_messages_cover_help_list_and_status_builders() -> None:
     status_message = sut._build_search_session_status_message(searches[0])
 
     assert "/start" in help_common and "/logout" in help_common
+    assert "🧭 *Общие команды" in help_common
     assert "Кабинет кандидата" in help_candidate
     assert "Кабинет работодателя" in help_employer
-    assert "стр. 1/2" in list_message
+    assert "Страница: *1/2*" in list_message
     assert "Статус" in list_message
     assert "Состояние поиска обновлено" in status_message

@@ -31,6 +31,21 @@ ReturnT = TypeVar("ReturnT")
 
 
 class GatewayUtilsMixin:
+    def _build_gateway_feedback_message(
+        self,
+        *,
+        gateway_label: str,
+        title: str,
+        status_line: str,
+        details: list[str] | None = None,
+    ) -> str:
+        return self._build_status_screen(
+            section_path=f"Системные сообщения · {gateway_label}",
+            title=title,
+            status_line=status_line,
+            details=details,
+        )
+
     async def _send_gateway_feedback(
         self,
         *,
@@ -38,12 +53,14 @@ class GatewayUtilsMixin:
         text: str,
         reply_markup: dict | None = None,
         as_attachment: bool = False,
+        parse_mode: str | None = "Markdown",
     ) -> None:
         if as_attachment and hasattr(self._telegram_client, "send_attachment_message"):
             await self._telegram_client.send_attachment_message(
                 chat_id=chat_id,
                 text=text,
                 reply_markup=reply_markup,
+                parse_mode=parse_mode,
             )
             return
 
@@ -51,6 +68,7 @@ class GatewayUtilsMixin:
             chat_id=chat_id,
             text=text,
             reply_markup=reply_markup,
+            parse_mode=parse_mode,
         )
 
     async def _run_candidate_gateway_call(
@@ -166,7 +184,12 @@ class GatewayUtilsMixin:
         if isinstance(exc, CandidateGatewayUnauthorizedError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Кандидаты",
+                    title="Сессия истекла",
+                    status_line="⚠️ Сессия устарела.",
+                    details=["Нажми `/start`, чтобы выбрать роль заново."],
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -174,7 +197,11 @@ class GatewayUtilsMixin:
         if isinstance(exc, CandidateGatewayForbiddenError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Недостаточно прав для этого действия.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Кандидаты",
+                    title="Недостаточно прав",
+                    status_line="⚠️ Недостаточно прав для этого действия.",
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -182,7 +209,12 @@ class GatewayUtilsMixin:
         if isinstance(exc, CandidateGatewayConflictError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Данные кандидата изменились. Обнови меню и попробуй снова.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Кандидаты",
+                    title="Данные изменились",
+                    status_line="⚠️ Данные кандидата изменились.",
+                    details=["Обнови меню и попробуй снова."],
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -190,7 +222,12 @@ class GatewayUtilsMixin:
         if isinstance(exc, CandidateGatewayValidationError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Проверь введённые данные кандидата и попробуй ещё раз.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Кандидаты",
+                    title="Ошибка в данных",
+                    status_line="⚠️ Проверь введённые данные кандидата.",
+                    details=["После этого попробуй ещё раз."],
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -198,7 +235,12 @@ class GatewayUtilsMixin:
         if isinstance(exc, CandidateGatewayRateLimitedError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Слишком много запросов к сервису кандидатов. Подожди немного и повтори.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Кандидаты",
+                    title="Слишком много запросов",
+                    status_line="⚠️ Слишком много запросов к сервису кандидатов.",
+                    details=["Подожди немного и повтори."],
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -206,7 +248,12 @@ class GatewayUtilsMixin:
         if isinstance(exc, CandidateGatewayUnavailableError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Сервис кандидатов временно недоступен. Попробуй позже.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Кандидаты",
+                    title="Сервис временно недоступен",
+                    status_line="⚠️ Сервис кандидатов временно недоступен.",
+                    details=["Попробуй позже."],
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -214,7 +261,12 @@ class GatewayUtilsMixin:
         if isinstance(exc, CandidateGatewayProtocolError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Сервис кандидатов вернул некорректный ответ. Попробуй позже.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Кандидаты",
+                    title="Некорректный ответ сервиса",
+                    status_line="⚠️ Сервис кандидатов вернул некорректный ответ.",
+                    details=["Попробуй позже."],
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -236,7 +288,12 @@ class GatewayUtilsMixin:
         if isinstance(exc, EmployerGatewayUnauthorizedError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Работодатели",
+                    title="Сессия истекла",
+                    status_line="⚠️ Сессия устарела.",
+                    details=["Нажми `/start`, чтобы выбрать роль заново."],
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -244,7 +301,11 @@ class GatewayUtilsMixin:
         if isinstance(exc, EmployerGatewayForbiddenError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Недостаточно прав для этого действия.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Работодатели",
+                    title="Недостаточно прав",
+                    status_line="⚠️ Недостаточно прав для этого действия.",
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -252,7 +313,12 @@ class GatewayUtilsMixin:
         if isinstance(exc, EmployerGatewayConflictError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Данные поиска или профиля изменились. Обнови меню и попробуй снова.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Работодатели",
+                    title="Данные изменились",
+                    status_line="⚠️ Данные поиска или профиля изменились.",
+                    details=["Обнови меню и попробуй снова."],
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -260,7 +326,12 @@ class GatewayUtilsMixin:
         if isinstance(exc, EmployerGatewayValidationError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Проверь параметры запроса: часть полей не прошла валидацию.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Работодатели",
+                    title="Ошибка в данных",
+                    status_line="⚠️ Часть полей не прошла валидацию.",
+                    details=["Проверь параметры запроса."],
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -268,7 +339,12 @@ class GatewayUtilsMixin:
         if isinstance(exc, EmployerGatewayRateLimitedError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Слишком много запросов к сервису работодателей. Подожди немного и повтори.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Работодатели",
+                    title="Слишком много запросов",
+                    status_line="⚠️ Слишком много запросов к сервису работодателей.",
+                    details=["Подожди немного и повтори."],
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -276,7 +352,11 @@ class GatewayUtilsMixin:
         if isinstance(exc, EmployerGatewayNotFoundError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Запрос или сущность не найдены.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Работодатели",
+                    title="Ничего не найдено",
+                    status_line="⚠️ Запрос или сущность не найдены.",
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -284,7 +364,12 @@ class GatewayUtilsMixin:
         if isinstance(exc, EmployerGatewayUnavailableError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Сервис работодателей временно недоступен. Попробуй позже.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Работодатели",
+                    title="Сервис временно недоступен",
+                    status_line="⚠️ Сервис работодателей временно недоступен.",
+                    details=["Попробуй позже."],
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -292,7 +377,12 @@ class GatewayUtilsMixin:
         if isinstance(exc, EmployerGatewayProtocolError):
             await self._send_gateway_feedback(
                 chat_id=chat_id,
-                text="Сервис работодателей вернул некорректный ответ. Попробуй позже.",
+                text=self._build_gateway_feedback_message(
+                    gateway_label="Работодатели",
+                    title="Некорректный ответ сервиса",
+                    status_line="⚠️ Сервис работодателей вернул некорректный ответ.",
+                    details=["Попробуй позже."],
+                ),
                 as_attachment=as_attachment,
             )
             return
@@ -379,7 +469,11 @@ class GatewayUtilsMixin:
         )
         await self._send_gateway_feedback(
             chat_id=chat_id,
-            text="Можно попробовать ещё раз прямо сейчас.",
+            text=self._build_gateway_feedback_message(
+                gateway_label="Системные действия",
+                title="Можно повторить попытку",
+                status_line="ℹ️ Можно попробовать ещё раз прямо сейчас.",
+            ),
             reply_markup={
                 "inline_keyboard": [
                     [{"text": "🔁 Повторить попытку", "callback_data": retry_token}]

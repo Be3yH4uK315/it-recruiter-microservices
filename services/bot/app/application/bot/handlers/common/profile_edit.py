@@ -34,6 +34,20 @@ logger = get_logger(__name__)
 
 
 class ProfileEditUtilsMixin:
+    def _build_candidate_choice_prompt(
+        self,
+        *,
+        title: str,
+        instruction: str,
+        current_value: str,
+    ) -> str:
+        return self._build_structured_prompt(
+            section_path="Кабинет кандидата · Редактирование",
+            title=title,
+            instruction=instruction,
+            current_value=current_value,
+        )
+
     async def _handle_candidate_edit_work_modes_choice_start(
         self,
         *,
@@ -60,12 +74,12 @@ class ProfileEditUtilsMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет кандидата > Редактирование\n\n"
-                "✏️ Редактирование\n\n"
-                "Выбери форматы работы кнопками ниже.\n\n"
-                f"Текущий выбор: {current_text}"
+            text=self._build_candidate_choice_prompt(
+                title="Выбери форматы работы",
+                instruction="Используй кнопки ниже, чтобы отметить подходящие варианты.",
+                current_value=current_text,
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_candidate_work_modes_selector_markup(
                 telegram_user_id=actor.id,
                 selected_modes=selected,
@@ -98,12 +112,12 @@ class ProfileEditUtilsMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет кандидата > Редактирование\n\n"
-                "✏️ Редактирование\n\n"
-                "Выбери видимость контактов кнопками ниже.\n\n"
-                f"Текущий выбор: {current_text}"
+            text=self._build_candidate_choice_prompt(
+                title="Выбери видимость контактов",
+                instruction="Используй кнопки ниже, чтобы задать режим приватности.",
+                current_value=current_text,
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_candidate_contacts_visibility_selector_markup(
                 telegram_user_id=actor.id,
                 selected_visibility=selected,
@@ -134,12 +148,12 @@ class ProfileEditUtilsMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет кандидата > Редактирование\n\n"
-                "✏️ Редактирование\n\n"
-                "Выбери уровень английского кнопками ниже.\n\n"
-                f"Текущий выбор: {selected or '—'}"
+            text=self._build_candidate_choice_prompt(
+                title="Выбери уровень английского",
+                instruction="Используй кнопки ниже, чтобы указать актуальный уровень.",
+                current_value=selected or "—",
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_candidate_english_level_selector_markup(
                 telegram_user_id=actor.id,
                 selected_level=selected,
@@ -171,12 +185,12 @@ class ProfileEditUtilsMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет кандидата > Редактирование\n\n"
-                "✏️ Редактирование\n\n"
-                "Выбери статус профиля кнопками ниже.\n\n"
-                f"Текущий выбор: {self._humanize_candidate_status(selected)}"
+            text=self._build_candidate_choice_prompt(
+                title="Выбери статус профиля",
+                instruction="Используй кнопки ниже, чтобы обновить статус профиля.",
+                current_value=self._humanize_candidate_status(selected),
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_candidate_status_selector_markup(
                 telegram_user_id=actor.id,
                 selected_status=selected,
@@ -458,14 +472,18 @@ class ProfileEditUtilsMixin:
         current_value: str | None,
         parse_mode: str | None,
     ) -> str:
-        lines = [cabinet_prefix, "", "✏️ Редактирование", "", prompt]
+        if parse_mode == "Markdown":
+            return ProfileEditUtilsMixin._build_structured_prompt(
+                section_path=cabinet_prefix,
+                title="Редактирование",
+                instruction=prompt,
+                current_value=current_value,
+            )
+
+        lines = [cabinet_prefix, "", "Редактирование", "", prompt]
         if current_value is not None:
             preview = current_value.strip() or "—"
             if len(preview) > 240:
                 preview = f"{preview[:240].rstrip()}…"
-            if parse_mode == "Markdown":
-                preview = preview.replace("`", "'")
-                lines.extend(["", f"Текущий выбор: `{preview}`"])
-            else:
-                lines.extend(["", f"Текущий выбор: {preview}"])
+            lines.extend(["", f"Текущий выбор: {preview}"])
         return "\n".join(lines)

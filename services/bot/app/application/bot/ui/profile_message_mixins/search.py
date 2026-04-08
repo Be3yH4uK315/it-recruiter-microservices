@@ -12,9 +12,13 @@ class SearchProfileMessagesMixin(ProfileSharedMessagesMixin):
         items: list[CandidateProfileSummary],
     ) -> str:
         if not items:
-            return f"{title}\n\n🗂 Пока пусто."
+            return SearchProfileMessagesMixin._build_screen_message(
+                section_path="Кабинет работодателя · Подборки кандидатов",
+                title=title,
+                body_lines=["🗂 Пока пусто."],
+            )
 
-        lines = [title, ""]
+        lines: list[str] = []
         for index, item in enumerate(items[:20], start=1):
             display_name = (
                 SearchProfileMessagesMixin._as_clean_text(item.display_name) or "Имя не указано"
@@ -63,33 +67,41 @@ class SearchProfileMessagesMixin(ProfileSharedMessagesMixin):
                         item.contacts_visibility
                     )
                 )
-        return "\n".join(lines)
+        return SearchProfileMessagesMixin._build_screen_message(
+            section_path="Кабинет работодателя · Подборки кандидатов",
+            title=title,
+            body_lines=lines,
+        )
 
     @staticmethod
     def _build_next_candidate_message(result: NextCandidateResultView) -> str:
         if result.candidate is None:
             if result.is_degraded:
-                return "Кабинет работодателя > Поиск > Карточка кандидата\n\n" + (
-                    "⚠️ Поиск временно ограничен.\n\n"
-                    + (
+                return SearchProfileMessagesMixin._build_screen_message(
+                    section_path="Кабинет работодателя · Поиск · Карточка кандидата",
+                    title="Карточка кандидата",
+                    body_lines=[
+                        "⚠️ Поиск временно ограничен.",
+                        "",
                         result.message
                         or (
                             "Подбор временно недоступен (degraded). "
                             "Нажми «Следующий кандидат», чтобы повторить."
-                        )
-                    )
+                        ),
+                    ],
                 )
-            return (
-                "Кабинет работодателя > Поиск > Карточка кандидата\n\n"
-                + "📭 Кандидаты по этому поиску закончились.\n\n"
-                + (result.message or "Попробуй скорректировать фильтры или открыть другой поиск.")
+            return SearchProfileMessagesMixin._build_screen_message(
+                section_path="Кабинет работодателя · Поиск · Карточка кандидата",
+                title="Карточка кандидата",
+                body_lines=[
+                    "📭 Кандидаты по этому поиску закончились.",
+                    "",
+                    result.message or "Попробуй скорректировать фильтры или открыть другой поиск.",
+                ],
             )
 
         candidate = result.candidate
-        lines = [
-            "Кабинет работодателя > Поиск > Карточка кандидата",
-            "",
-        ]
+        lines: list[str] = []
         lines.extend(
             SearchProfileMessagesMixin._build_candidate_profile_core_lines(
                 candidate,
@@ -106,4 +118,8 @@ class SearchProfileMessagesMixin(ProfileSharedMessagesMixin):
             )
         )
 
-        return "\n".join(lines)
+        return SearchProfileMessagesMixin._build_screen_message(
+            section_path="Кабинет работодателя · Поиск · Карточка кандидата",
+            title="Карточка кандидата",
+            body_lines=lines,
+        )

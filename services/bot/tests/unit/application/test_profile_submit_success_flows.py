@@ -12,6 +12,7 @@ from app.application.bot.handlers.common.utils import CommonUtilsMixin
 from app.application.bot.handlers.employer.profile_submit import (
     EmployerProfileSubmitHandlersMixin,
 )
+from app.application.bot.ui.profile_message_mixins.shared import ProfileSharedMessagesMixin
 from app.application.common.contracts import (
     UNSET,
     CandidateProfileSummary,
@@ -86,6 +87,7 @@ class SuccessSut(
     CandidateProfileSubmitHandlersMixin,
     EmployerProfileSubmitHandlersMixin,
     CommonUtilsMixin,
+    ProfileSharedMessagesMixin,
 ):
     def __init__(self) -> None:
         self._auth_session_service = DummyAuthSessionService()
@@ -183,7 +185,7 @@ async def test_candidate_edit_submit_renders_single_dashboard_screen() -> None:
     assert sut._telegram_client.messages == [
         {
             "chat_id": 100,
-            "text": "candidate-dashboard:Alice:Berlin",
+            "text": "✅ *Изменения сохранены.*\n\ncandidate-dashboard:Alice:Berlin",
             "parse_mode": "Markdown",
             "reply_markup": {"candidate_dashboard": 100},
         }
@@ -212,7 +214,7 @@ async def test_candidate_contact_submit_renders_single_dashboard_screen() -> Non
     assert sut._telegram_client.messages == [
         {
             "chat_id": 100,
-            "text": "candidate-dashboard:Alice:Moscow",
+            "text": "✅ *Изменения сохранены.*\n\ncandidate-dashboard:Alice:Moscow",
             "parse_mode": "Markdown",
             "reply_markup": {"candidate_dashboard": 100},
         }
@@ -236,7 +238,7 @@ async def test_employer_edit_company_submit_renders_single_dashboard_screen() ->
     assert sut._telegram_client.messages == [
         {
             "chat_id": 100,
-            "text": "employer-dashboard:Acme Labs",
+            "text": "✅ *Изменения сохранены.*\n\nemployer-dashboard:Acme Labs",
             "parse_mode": "Markdown",
             "reply_markup": {"employer_dashboard": 100},
         }
@@ -264,7 +266,7 @@ async def test_employer_contact_submit_renders_single_dashboard_screen() -> None
     assert sut._telegram_client.messages == [
         {
             "chat_id": 100,
-            "text": "employer-dashboard:Acme",
+            "text": "✅ *Изменения сохранены.*\n\nemployer-dashboard:Acme",
             "parse_mode": "Markdown",
             "reply_markup": {"employer_dashboard": 100},
         }

@@ -8,6 +8,22 @@ logger = get_logger(__name__)
 
 
 class EmployerProfileSubmitHandlersMixin:
+    def _build_employer_submit_status_message(
+        self,
+        *,
+        title: str,
+        status_line: str,
+        details: list[str] | None = None,
+        footer: str | None = None,
+    ) -> str:
+        return self._build_status_screen(
+            section_path="Кабинет работодателя · Редактирование профиля",
+            title=title,
+            status_line=status_line,
+            details=details,
+            footer=footer,
+        )
+
     async def _clear_employer_submit_state_and_send_message(
         self,
         *,
@@ -69,11 +85,14 @@ class EmployerProfileSubmitHandlersMixin:
         )
         await self._telegram_client.send_message(
             chat_id=chat_id,
-            text=self._build_employer_dashboard_message(
-                first_name=actor.first_name,
-                employer=employer,
-                statistics=stats,
-                created_now=False,
+            text=(
+                "✅ *Изменения сохранены.*\n\n"
+                + self._build_employer_dashboard_message(
+                    first_name=actor.first_name,
+                    employer=employer,
+                    statistics=stats,
+                    created_now=False,
+                )
             ),
             parse_mode="Markdown",
             reply_markup=await self._build_employer_dashboard_markup(actor.id),
@@ -93,17 +112,23 @@ class EmployerProfileSubmitHandlersMixin:
             return await self._clear_employer_submit_state_and_send_message(
                 telegram_user_id=actor.id,
                 chat_id=chat_id,
-                text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                text=self._build_employer_submit_status_message(
+                    title="Сессия истекла",
+                    status_line="⚠️ Сессия устарела.",
+                    details=["Нажми `/start`, чтобы выбрать роль заново."],
+                ),
                 action="session_expired",
+                parse_mode="Markdown",
             )
 
         normalized_company = company.strip() if isinstance(company, str) else company
         if isinstance(normalized_company, str) and not normalized_company:
             await self._telegram_client.send_message(
                 chat_id=chat_id,
-                text=(
-                    "Пустое значение сохранить нельзя. "
-                    "Введи название компании или отправь `-`, чтобы очистить поле."
+                text=self._build_employer_submit_status_message(
+                    title="Нужно значение",
+                    status_line="⚠️ Пустое значение сохранить нельзя.",
+                    details=["Введи название компании или отправь `-`, чтобы очистить поле."],
                 ),
                 parse_mode="Markdown",
             )
@@ -132,7 +157,12 @@ class EmployerProfileSubmitHandlersMixin:
                 await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
                 await self._telegram_client.send_message(
                     chat_id=chat_id,
-                    text="Профиль работодателя не найден. Нажми /start, чтобы начать заново.",
+                    text=self._build_employer_submit_status_message(
+                        title="Профиль не найден",
+                        status_line="⚠️ Профиль работодателя не найден.",
+                        details=["Нажми `/start`, чтобы начать заново."],
+                    ),
+                    parse_mode="Markdown",
                 )
                 return {"status": "processed", "action": "employer_not_found"}
 
@@ -187,16 +217,26 @@ class EmployerProfileSubmitHandlersMixin:
             return await self._clear_employer_submit_state_and_send_message(
                 telegram_user_id=actor.id,
                 chat_id=chat_id,
-                text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                text=self._build_employer_submit_status_message(
+                    title="Сессия истекла",
+                    status_line="⚠️ Сессия устарела.",
+                    details=["Нажми `/start`, чтобы выбрать роль заново."],
+                ),
                 action="session_expired",
+                parse_mode="Markdown",
             )
 
         if contact_key not in {"telegram", "email", "phone", "website"}:
             return await self._clear_employer_submit_state_and_send_message(
                 telegram_user_id=actor.id,
                 chat_id=chat_id,
-                text="Неизвестное поле контакта. Нажми /start, чтобы открыть меню заново.",
+                text=self._build_employer_submit_status_message(
+                    title="Неизвестное поле",
+                    status_line="⚠️ Неизвестное поле контакта.",
+                    details=["Нажми `/start`, чтобы открыть меню заново."],
+                ),
                 action="employer_contact_invalid_key",
+                parse_mode="Markdown",
             )
 
         try:
@@ -212,7 +252,12 @@ class EmployerProfileSubmitHandlersMixin:
                 await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
                 await self._telegram_client.send_message(
                     chat_id=chat_id,
-                    text="Профиль работодателя не найден. Нажми /start, чтобы начать заново.",
+                    text=self._build_employer_submit_status_message(
+                        title="Профиль не найден",
+                        status_line="⚠️ Профиль работодателя не найден.",
+                        details=["Нажми `/start`, чтобы начать заново."],
+                    ),
+                    parse_mode="Markdown",
                 )
                 return {"status": "processed", "action": "employer_not_found"}
         except EmployerGatewayError as exc:

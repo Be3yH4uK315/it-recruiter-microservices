@@ -66,3 +66,19 @@ async def test_placeholder_token_short_circuits_delete_message() -> None:
 
     assert result == {"ok": True, "result": True}
     assert http_client.calls == []
+
+
+def test_convert_markdown_to_markdown_v2_preserves_basic_formatting() -> None:
+    converted = TelegramApiClient._convert_markdown_to_markdown_v2(
+        "🧭 *Мастер поиска*\n\nВведи `2-5` и скобки (test)."
+    )
+
+    assert converted == "🧭 *Мастер поиска*\n\nВведи `2-5` и скобки \\(test\\)\\."
+
+
+def test_convert_markdown_to_markdown_v2_handles_escaped_legacy_chars() -> None:
+    converted = TelegramApiClient._convert_markdown_to_markdown_v2(
+        "Имя: Python\\_\\[Lead\\] и путь \\\\server"
+    )
+
+    assert converted == "Имя: Python\\_\\[Lead\\] и путь \\\\server"

@@ -30,6 +30,20 @@ logger = get_logger(__name__)
 
 
 class EmployerSearchHandlersMixin:
+    def _build_employer_search_choice_prompt(
+        self,
+        *,
+        title: str,
+        instruction: str,
+        current_value: str | None = None,
+    ) -> str:
+        return self._build_structured_prompt(
+            section_path="Кабинет работодателя · Поиск · Новый поиск",
+            title=title,
+            instruction=instruction,
+            current_value=current_value,
+        )
+
     async def _render_employer_search_work_modes_step(
         self,
         *,
@@ -46,11 +60,12 @@ class EmployerSearchHandlersMixin:
             state_key=STATE_EMPLOYER_SEARCH_WORK_MODES,
             payload=payload,
             chat_id=chat_id,
-            text=(
-                "Кабинет работодателя > Поиск > Новый поиск\n\n🧭 Мастер поиска\n\n"
-                "Выбери режимы работы кнопками ниже.\n\n"
-                f"Текущий выбор: {current}"
+            text=self._build_employer_search_choice_prompt(
+                title="Выбери режимы работы",
+                instruction="Используй кнопки ниже, чтобы отметить подходящие форматы.",
+                current_value=current,
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_employer_search_work_modes_selector_markup(
                 telegram_user_id=telegram_user_id,
                 selected_modes=(
@@ -76,10 +91,12 @@ class EmployerSearchHandlersMixin:
             state_key=STATE_EMPLOYER_SEARCH_ENGLISH,
             payload=payload,
             chat_id=chat_id,
-            text=(
-                "Кабинет работодателя > Поиск > Новый поиск\n\n🧭 Мастер поиска\n\n"
-                "Выбери уровень английского кнопками ниже."
+            text=self._build_employer_search_choice_prompt(
+                title="Выбери уровень английского",
+                instruction="Используй кнопки ниже, чтобы указать требуемый уровень.",
+                current_value=str(payload.get("english_level") or "—"),
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_employer_search_english_selector_markup(
                 telegram_user_id=telegram_user_id,
                 selected_level=str(payload.get("english_level") or ""),
@@ -165,11 +182,13 @@ class EmployerSearchHandlersMixin:
             await self._render_callback_screen(
                 callback=callback,
                 actor=actor,
-                text=(
-                    "Кабинет работодателя > Поиск > Все поиски\n\n"
-                    "🗂 У тебя пока нет поисковых сессий.\n\n"
-                    "Создай новый поиск, чтобы начать подбор кандидатов."
+                text=self._build_status_screen(
+                    section_path="Кабинет работодателя · Поиск · Все поиски",
+                    title="Ваши поисковые сессии",
+                    status_line="🗂 У тебя пока нет поисковых сессий.",
+                    details=["Создай новый поиск, чтобы начать подбор кандидатов."],
                 ),
+                parse_mode="Markdown",
                 reply_markup=await self._build_employer_searches_empty_markup(
                     telegram_user_id=actor.id,
                 ),
@@ -221,11 +240,13 @@ class EmployerSearchHandlersMixin:
             await self._render_callback_screen(
                 callback=callback,
                 actor=actor,
-                text=(
-                    "Кабинет работодателя > Поиск\n\n"
-                    "🛑 Создание поиска отменено.\n\n"
-                    "Ты можешь запустить мастер заново в любой момент."
+                text=self._build_status_screen(
+                    section_path="Кабинет работодателя · Поиск",
+                    title="Создание поиска",
+                    status_line="🛑 Создание поиска отменено.",
+                    details=["Ты можешь запустить мастер заново в любой момент."],
                 ),
+                parse_mode="Markdown",
                 reply_markup=await self._build_employer_dashboard_markup(actor.id),
             )
             return {"status": "processed", "action": "employer_search_create_cancelled"}
@@ -249,11 +270,13 @@ class EmployerSearchHandlersMixin:
                 state_key=STATE_EMPLOYER_SEARCH_TITLE,
                 payload=payload,
                 chat_id=self._resolve_chat_id(callback, actor),
-                text=(
-                    "Кабинет работодателя > Поиск > Новый поиск\n\n🧭 Мастер поиска\n\n"
-                    "Не удалось восстановить черновик. "
-                    f"{invalid_payload_reason or 'Введи название поиска заново.'}"
+                text=self._build_structured_prompt(
+                    section_path="Кабинет работодателя · Поиск · Новый поиск",
+                    title="Мастер поиска",
+                    instruction="Не удалось восстановить черновик.",
+                    details=[invalid_payload_reason or "Введи название поиска заново."],
                 ),
+                parse_mode="Markdown",
                 reply_markup=await self._build_employer_search_wizard_controls_markup(
                     telegram_user_id=actor.id,
                     step="title",
@@ -328,13 +351,17 @@ class EmployerSearchHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет работодателя > Поиск\n\n"
-                "✅ Поиск создан.\n\n"
-                f"🔎 Название: {search.title}\n"
-                f"💼 Роль: {search.role or '—'}\n"
-                f"📊 Статус: {self._humanize_search_status(search.status)}"
+            text=self._build_status_screen(
+                section_path="Кабинет работодателя · Поиск",
+                title="Поиск создан",
+                status_line="✅ Поиск создан.",
+                details=[
+                    f"🔎 *Название:* {search.title}",
+                    f"💼 *Роль:* {search.role or '—'}",
+                    f"📊 *Статус:* {self._humanize_search_status(search.status)}",
+                ],
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_open_search_markup(
                 telegram_user_id=actor.id,
                 session_id=search.id,

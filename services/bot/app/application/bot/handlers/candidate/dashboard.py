@@ -163,11 +163,12 @@ class CandidateDashboardHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет кандидата > Профиль > Редактирование\n\n"
-                "✏️ Редактирование профиля кандидата\n\n"
-                "Выбери блок, который хочешь обновить."
+            text=self._build_screen_message(
+                section_path="Кабинет кандидата · Профиль · Редактирование",
+                title="Редактирование профиля кандидата",
+                body_lines=["Выбери блок, который хочешь обновить."],
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_candidate_profile_edit_menu_markup(
                 telegram_user_id=actor.id
             ),
@@ -189,11 +190,12 @@ class CandidateDashboardHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет кандидата > Профиль > Редактирование\n\n"
-                "✏️ Редактирование профиля кандидата\n\n"
-                "Выбери блок, который хочешь обновить."
+            text=self._build_screen_message(
+                section_path="Кабинет кандидата · Профиль · Редактирование",
+                title="Редактирование профиля кандидата",
+                body_lines=["Выбери блок, который хочешь обновить."],
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_candidate_profile_edit_menu_markup(
                 telegram_user_id=actor.id
             ),
@@ -260,11 +262,12 @@ class CandidateDashboardHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет кандидата > Файлы\n\n"
-                "📁 Файлы кандидата\n\n"
-                "Здесь можно загрузить, скачать и удалить аватар или резюме."
+            text=self._build_screen_message(
+                section_path="Кабинет кандидата · Файлы",
+                title="Файлы кандидата",
+                body_lines=["Здесь можно загрузить, скачать и удалить аватар или резюме."],
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_candidate_files_section_markup(
                 telegram_user_id=actor.id,
                 has_avatar=bool(candidate.avatar_file_id or candidate.avatar_download_url),
@@ -342,11 +345,14 @@ class CandidateDashboardHandlersMixin:
         await self._render_callback_screen(
             callback=callback,
             actor=actor,
-            text=(
-                "Кабинет кандидата > Контакты и видимость\n\n"
-                "🔐 Контакты и приватность\n\n"
-                f"📊 *Статус профиля:* {self._humanize_candidate_status(candidate.status)}\n\n"
-                f"{contacts_block}"
+            text=self._build_screen_message(
+                section_path="Кабинет кандидата · Контакты и видимость",
+                title="Контакты и приватность",
+                body_lines=[
+                    f"📊 *Статус профиля:* {self._humanize_candidate_status(candidate.status)}",
+                    "",
+                    contacts_block,
+                ],
             ),
             parse_mode="Markdown",
             reply_markup=await self._build_candidate_contacts_section_markup(
