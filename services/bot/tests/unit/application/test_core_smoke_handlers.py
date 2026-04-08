@@ -229,11 +229,12 @@ class UploadModel:
 async def test_recovery_handles_noop_and_recovery_cases() -> None:
     sut = RecoverySut()
 
-    await sut._recover_pending_uploads_for_role(
+    no_message = await sut._recover_pending_uploads_for_role(
         telegram_user_id=100,
         role=ROLE_CANDIDATE,
         chat_id=100,
     )
+    assert no_message is None
     assert sut._telegram_client.messages == []
 
     sut._pending_upload_repo.items = [
@@ -244,7 +245,7 @@ async def test_recovery_handles_noop_and_recovery_cases() -> None:
         state_key=STATE_CANDIDATE_FILE_AWAIT_AVATAR
     )
 
-    await sut._recover_pending_uploads_for_role(
+    recovery_message = await sut._recover_pending_uploads_for_role(
         telegram_user_id=100,
         role=ROLE_CANDIDATE,
         chat_id=100,
@@ -252,7 +253,7 @@ async def test_recovery_handles_noop_and_recovery_cases() -> None:
 
     assert len(sut._pending_upload_repo.set_calls) == 2
     assert sut._conversation_state_service.cleared == [100]
-    assert len(sut._telegram_client.messages) == 1
+    assert recovery_message == "recover:candidate:2:True"
 
 
 @pytest.mark.asyncio

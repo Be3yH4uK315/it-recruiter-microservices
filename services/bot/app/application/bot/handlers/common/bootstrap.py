@@ -77,21 +77,28 @@ class BootstrapRegistrationHandlersMixin:
                 access_token=access_token,
                 candidate_id=candidate.id,
             )
-            await self._telegram_client.send_message(
-                chat_id=chat_id,
-                text=self._build_candidate_dashboard_message(
-                    first_name=actor.first_name,
-                    candidate=candidate,
-                    statistics=stats,
-                    created_now=False,
-                ),
-                parse_mode="Markdown",
-                reply_markup=await self._build_candidate_dashboard_markup(actor.id),
-            )
-            await self._recover_pending_uploads_for_role(
+            recovery_note = await self._recover_pending_uploads_for_role(
                 telegram_user_id=actor.id,
                 role=ROLE_CANDIDATE,
                 chat_id=chat_id,
+            )
+            await self._telegram_client.send_message(
+                chat_id=chat_id,
+                text=(
+                    self._build_candidate_dashboard_message(
+                        first_name=actor.first_name,
+                        candidate=candidate,
+                        statistics=stats,
+                        created_now=False,
+                    )
+                    + (
+                        f"\n\n{recovery_note}"
+                        if recovery_note
+                        else ""
+                    )
+                ),
+                parse_mode="Markdown",
+                reply_markup=await self._build_candidate_dashboard_markup(actor.id),
             )
             return
 
@@ -137,21 +144,28 @@ class BootstrapRegistrationHandlersMixin:
                 access_token=access_token,
                 employer_id=employer.id,
             )
-            await self._telegram_client.send_message(
-                chat_id=chat_id,
-                text=self._build_employer_dashboard_message(
-                    first_name=actor.first_name,
-                    employer=employer,
-                    statistics=stats,
-                    created_now=False,
-                ),
-                parse_mode="Markdown",
-                reply_markup=await self._build_employer_dashboard_markup(actor.id),
-            )
-            await self._recover_pending_uploads_for_role(
+            recovery_note = await self._recover_pending_uploads_for_role(
                 telegram_user_id=actor.id,
                 role=ROLE_EMPLOYER,
                 chat_id=chat_id,
+            )
+            await self._telegram_client.send_message(
+                chat_id=chat_id,
+                text=(
+                    self._build_employer_dashboard_message(
+                        first_name=actor.first_name,
+                        employer=employer,
+                        statistics=stats,
+                        created_now=False,
+                    )
+                    + (
+                        f"\n\n{recovery_note}"
+                        if recovery_note
+                        else ""
+                    )
+                ),
+                parse_mode="Markdown",
+                reply_markup=await self._build_employer_dashboard_markup(actor.id),
             )
             return
 

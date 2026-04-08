@@ -20,7 +20,7 @@ class RecoveryHandlersMixin:
         telegram_user_id: int,
         role: str,
         chat_id: int,
-    ) -> None:
+    ) -> str | None:
         hanging_uploads = await self._pending_upload_repo.list_non_terminal_for_user(
             telegram_user_id=telegram_user_id,
             role_context=role,
@@ -48,7 +48,7 @@ class RecoveryHandlersMixin:
             state_reset = True
 
         if not recovered_kinds and not state_reset:
-            return
+            return None
 
         logger.info(
             "pending uploads recovered",
@@ -60,11 +60,8 @@ class RecoveryHandlersMixin:
             },
         )
 
-        await self._telegram_client.send_message(
-            chat_id=chat_id,
-            text=self._build_pending_upload_recovery_message(
-                role=role,
-                recovered_kinds=recovered_kinds,
-                state_reset=state_reset,
-            ),
+        return self._build_pending_upload_recovery_message(
+            role=role,
+            recovered_kinds=recovered_kinds,
+            state_reset=state_reset,
         )
