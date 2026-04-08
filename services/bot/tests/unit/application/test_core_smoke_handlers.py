@@ -63,10 +63,14 @@ class CommandSut(CommandHandlersMixin):
         self._auth_session_service = DummyAuthSessionService()
         self._conversation_state_service = DummyConversationStateService()
         self.bootstrap_calls: list[dict] = []
+        self.role_selection_calls: list[dict] = []
         self.flow_events: list[dict] = []
 
     async def _bootstrap_role(self, **kwargs):
         self.bootstrap_calls.append(kwargs)
+
+    async def _send_role_selection(self, **kwargs):
+        self.role_selection_calls.append(kwargs)
 
     def _resolve_chat_id(self, callback, actor):
         return callback.message.chat.id if callback.message and callback.message.chat else actor.id
@@ -82,6 +86,12 @@ class CommandSut(CommandHandlersMixin):
 
     def _build_common_help_message(self) -> str:
         return "common help"
+
+    async def _build_candidate_back_to_dashboard_markup(self, telegram_user_id: int):
+        return {"candidate_back_for": telegram_user_id}
+
+    async def _build_employer_back_to_dashboard_markup(self, telegram_user_id: int):
+        return {"employer_back_for": telegram_user_id}
 
 
 class PendingUploadRepoStub:
@@ -202,11 +212,15 @@ async def test_commands_select_role_cancel_and_help_paths() -> None:
     sut._conversation_state_service.state = SimpleNamespace(role_context=ROLE_EMPLOYER)
     cancel_dashboard = await sut._handle_cancel_command(message=message, actor=actor)
     assert cancel_dashboard["action"] == "cancel_to_dashboard"
+    assert sut.bootstrap_calls[-1]["intro_note"] == "Текущий сценарий отменен. Возвращаю в меню."
 
     sut._conversation_state_service.state = None
     sut._auth_session_service.active_role = None
     cancel_none = await sut._handle_cancel_command(message=message, actor=actor)
     assert cancel_none["action"] == "cancel_no_active_role"
+    assert sut.role_selection_calls[-1]["intro_note"] == (
+        "Активная роль не выбрана. Выбери роль, чтобы продолжить."
+    )
 
     sut._auth_session_service.active_role = ROLE_CANDIDATE
     help_candidate = await sut._handle_help_command(message=message, actor=actor)
@@ -218,6 +232,9 @@ async def test_commands_select_role_cancel_and_help_paths() -> None:
     assert help_candidate["action"] == "help_candidate"
     assert help_employer["action"] == "help_employer"
     assert help_common["action"] == "help_common"
+    assert sut._telegram_client.messages[-2]["reply_markup"] == {"candidate_back_for": 100}
+    assert sut._telegram_client.messages[-1]["reply_markup"] == {"employer_back_for": 100}
+    assert sut.role_selection_calls[-1]["intro_note"] == "common help"
 
 
 @dataclass

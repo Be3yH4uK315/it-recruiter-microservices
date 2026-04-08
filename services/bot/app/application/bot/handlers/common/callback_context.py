@@ -21,11 +21,14 @@ class CallbackContextMixin:
         *,
         chat_id: int,
         actor: TelegramUser,
+        intro_note: str | None = None,
     ) -> None:
         text = (
             f"👋 Привет, {actor.first_name or 'пользователь'}.\n\n"
             "Выбери роль, в которой хочешь продолжить работу:"
         )
+        if intro_note:
+            text = f"{intro_note}\n\n{text}"
 
         await self._telegram_client.send_message(
             chat_id=chat_id,

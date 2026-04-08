@@ -8,6 +8,53 @@ logger = get_logger(__name__)
 
 
 class EmployerProfileSubmitHandlersMixin:
+    async def _clear_employer_submit_state_and_send_message(
+        self,
+        *,
+        telegram_user_id: int,
+        chat_id: int,
+        text: str,
+        action: str,
+        parse_mode: str | None = None,
+    ) -> dict:
+        await self._conversation_state_service.clear_state(telegram_user_id=telegram_user_id)
+        await self._telegram_client.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=parse_mode,
+        )
+        return {"status": "processed", "action": action}
+
+    async def _clear_employer_submit_state_and_handle_gateway_error(
+        self,
+        *,
+        telegram_user_id: int,
+        chat_id: int,
+        exc: EmployerGatewayError,
+    ) -> dict:
+        await self._conversation_state_service.clear_state(telegram_user_id=telegram_user_id)
+        await self._handle_employer_gateway_error(chat_id=chat_id, exc=exc)
+        return {"status": "processed", "action": "employer_gateway_error"}
+
+    async def _finish_employer_submit_success(
+        self,
+        *,
+        telegram_user_id: int,
+        actor: TelegramUser,
+        chat_id: int,
+        access_token: str,
+        employer,
+        action: str,
+    ) -> dict:
+        await self._conversation_state_service.clear_state(telegram_user_id=telegram_user_id)
+        await self._render_employer_dashboard_after_submit(
+            actor=actor,
+            chat_id=chat_id,
+            access_token=access_token,
+            employer=employer,
+        )
+        return {"status": "processed", "action": action}
+
     async def _render_employer_dashboard_after_submit(
         self,
         *,
@@ -43,12 +90,12 @@ class EmployerProfileSubmitHandlersMixin:
             telegram_user_id=actor.id
         )
         if access_token is None:
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            return await self._clear_employer_submit_state_and_send_message(
+                telegram_user_id=actor.id,
                 chat_id=chat_id,
                 text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                action="session_expired",
             )
-            return {"status": "processed", "action": "session_expired"}
 
         normalized_company = company.strip() if isinstance(company, str) else company
         if isinstance(normalized_company, str) and not normalized_company:
@@ -110,18 +157,20 @@ class EmployerProfileSubmitHandlersMixin:
                 extra={"telegram_user_id": actor.id},
                 exc_info=exc,
             )
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._handle_employer_gateway_error(chat_id=chat_id, exc=exc)
-            return {"status": "processed", "action": "employer_gateway_error"}
+            return await self._clear_employer_submit_state_and_handle_gateway_error(
+                telegram_user_id=actor.id,
+                chat_id=chat_id,
+                exc=exc,
+            )
 
-        await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-        await self._render_employer_dashboard_after_submit(
+        return await self._finish_employer_submit_success(
+            telegram_user_id=actor.id,
             actor=actor,
             chat_id=chat_id,
             access_token=access_token,
             employer=updated,
+            action="employer_edit_company_saved",
         )
-        return {"status": "processed", "action": "employer_edit_company_saved"}
 
     async def _handle_employer_contact_submit(
         self,
@@ -135,20 +184,20 @@ class EmployerProfileSubmitHandlersMixin:
             telegram_user_id=actor.id
         )
         if access_token is None:
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            return await self._clear_employer_submit_state_and_send_message(
+                telegram_user_id=actor.id,
                 chat_id=chat_id,
                 text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                action="session_expired",
             )
-            return {"status": "processed", "action": "session_expired"}
 
         if contact_key not in {"telegram", "email", "phone", "website"}:
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            return await self._clear_employer_submit_state_and_send_message(
+                telegram_user_id=actor.id,
                 chat_id=chat_id,
                 text="Неизвестное поле контакта. Нажми /start, чтобы открыть меню заново.",
+                action="employer_contact_invalid_key",
             )
-            return {"status": "processed", "action": "employer_contact_invalid_key"}
 
         try:
             employer = await self._run_employer_gateway_call(
@@ -172,9 +221,11 @@ class EmployerProfileSubmitHandlersMixin:
                 extra={"telegram_user_id": actor.id, "contact_key": contact_key},
                 exc_info=exc,
             )
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._handle_employer_gateway_error(chat_id=chat_id, exc=exc)
-            return {"status": "processed", "action": "employer_gateway_error"}
+            return await self._clear_employer_submit_state_and_handle_gateway_error(
+                telegram_user_id=actor.id,
+                chat_id=chat_id,
+                exc=exc,
+            )
 
         existing_contacts = dict(employer.contacts or {})
         if raw_value is None:
@@ -222,15 +273,17 @@ class EmployerProfileSubmitHandlersMixin:
                 extra={"telegram_user_id": actor.id, "contact_key": contact_key},
                 exc_info=exc,
             )
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._handle_employer_gateway_error(chat_id=chat_id, exc=exc)
-            return {"status": "processed", "action": "employer_gateway_error"}
+            return await self._clear_employer_submit_state_and_handle_gateway_error(
+                telegram_user_id=actor.id,
+                chat_id=chat_id,
+                exc=exc,
+            )
 
-        await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-        await self._render_employer_dashboard_after_submit(
+        return await self._finish_employer_submit_success(
+            telegram_user_id=actor.id,
             actor=actor,
             chat_id=chat_id,
             access_token=access_token,
             employer=updated,
+            action=f"employer_edit_contact_{contact_key}_saved",
         )
-        return {"status": "processed", "action": f"employer_edit_contact_{contact_key}_saved"}

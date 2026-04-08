@@ -133,6 +133,12 @@ class DialogAwareTelegramClient:
         desired_primary_message_id = context.current_primary_message_id
         if desired_primary_message_id is None and context.callback_message_id is not None:
             desired_primary_message_id = context.callback_message_id
+        if (
+            desired_primary_message_id is None
+            and context.current_attachment_message_ids
+            and context.previous_primary_message_id is not None
+        ):
+            desired_primary_message_id = context.previous_primary_message_id
 
         desired_attachment_message_ids = [
             message_id

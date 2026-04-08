@@ -45,6 +45,7 @@ from app.application.bot.constants import (
     STATE_EMPLOYER_SEARCH_TITLE,
     STATE_EMPLOYER_SEARCH_WORK_MODES,
 )
+from app.application.bot.handlers.common.utils import CommonUtilsMixin
 from app.application.bot.handlers.common.search_utils import SearchUtilsMixin
 from app.application.bot.handlers.common.stateful_messages import StatefulMessageHandlersMixin
 from app.schemas.telegram import TelegramMessage, TelegramUser
@@ -65,7 +66,7 @@ class DummyTelegramClient:
         self.sent_messages.append(kwargs)
 
 
-class DummyStateful(StatefulMessageHandlersMixin):
+class DummyStateful(CommonUtilsMixin, StatefulMessageHandlersMixin):
     def __init__(self) -> None:
         self._telegram_client = DummyTelegramClient()
         self.calls: list[tuple[str, dict]] = []
@@ -531,3 +532,39 @@ async def test_employer_search_location_work_modes_english_about_branches() -> N
         state=DummyState(state_key=STATE_EMPLOYER_SEARCH_ABOUT, payload={}),
     )
     assert about_saved["action"] == "employer_search_about_saved"
+
+
+@pytest.mark.asyncio
+async def test_employer_search_text_steps_route_to_expected_renderer() -> None:
+    sut = DummyStatefulEmployerSearch()
+    actor = make_actor()
+
+    await sut._handle_stateful_message(
+        message=make_message(text="Python backend"),
+        actor=actor,
+        state=DummyState(state_key=STATE_EMPLOYER_SEARCH_TITLE, payload={}),
+    )
+    await sut._handle_stateful_message(
+        message=make_message(text="Python backend"),
+        actor=actor,
+        state=DummyState(
+            state_key=STATE_EMPLOYER_SEARCH_TITLE,
+            payload={"_employer_search_edit_step": "title"},
+        ),
+    )
+    await sut._handle_stateful_message(
+        message=make_message(text="Moscow"),
+        actor=actor,
+        state=DummyState(state_key=STATE_EMPLOYER_SEARCH_LOCATION, payload={}),
+    )
+    await sut._handle_stateful_message(
+        message=make_message(text="150000 250000 RUB"),
+        actor=actor,
+        state=DummyState(state_key=STATE_EMPLOYER_SEARCH_SALARY, payload={}),
+    )
+
+    call_names = [name for name, _payload in sut.calls]
+    assert call_names.count("wizard") == 1
+    assert call_names.count("confirm") == 1
+    assert call_names.count("work_modes") == 1
+    assert call_names.count("english") == 1

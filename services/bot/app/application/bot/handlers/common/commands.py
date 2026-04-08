@@ -74,20 +74,18 @@ class CommandHandlersMixin:
             state.role_context if state is not None else None
         ) or await self._auth_session_service.get_active_role(telegram_user_id=actor.id)
         if role in {ROLE_CANDIDATE, ROLE_EMPLOYER}:
-            await self._telegram_client.send_message(
-                chat_id=message.chat.id,
-                text="Текущий сценарий отменен. Возвращаю в меню.",
-            )
             await self._bootstrap_role(
                 actor=actor,
                 chat_id=message.chat.id,
                 role=role,
+                intro_note="Текущий сценарий отменен. Возвращаю в меню.",
             )
             return {"status": "processed", "action": "cancel_to_dashboard", "role": role}
 
-        await self._telegram_client.send_message(
+        await self._send_role_selection(
             chat_id=message.chat.id,
-            text="Активная роль не выбрана. Нажми /start, чтобы продолжить.",
+            actor=actor,
+            intro_note="Активная роль не выбрана. Выбери роль, чтобы продолжить.",
         )
         return {"status": "processed", "action": "cancel_no_active_role"}
 
@@ -101,15 +99,26 @@ class CommandHandlersMixin:
         if role == ROLE_CANDIDATE:
             text = self._build_candidate_help_message()
             action_name = "help_candidate"
+            reply_markup = await self._build_candidate_back_to_dashboard_markup(
+                telegram_user_id=actor.id
+            )
         elif role == ROLE_EMPLOYER:
             text = self._build_employer_help_message()
             action_name = "help_employer"
+            reply_markup = await self._build_employer_back_to_dashboard_markup(
+                telegram_user_id=actor.id
+            )
         else:
-            text = self._build_common_help_message()
-            action_name = "help_common"
+            await self._send_role_selection(
+                chat_id=message.chat.id,
+                actor=actor,
+                intro_note=self._build_common_help_message(),
+            )
+            return {"status": "processed", "action": "help_common"}
 
         await self._telegram_client.send_message(
             chat_id=message.chat.id,
             text=text,
+            reply_markup=reply_markup,
         )
         return {"status": "processed", "action": action_name}

@@ -82,6 +82,205 @@ logger = get_logger(__name__)
 
 
 class StatefulMessageHandlersMixin:
+    async def _send_stateful_message(
+        self,
+        *,
+        chat_id: int,
+        text: str,
+        parse_mode: str | None = None,
+        reply_markup: dict | None = None,
+    ) -> None:
+        await self._telegram_client.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
+
+    async def _return_stateful_message(
+        self,
+        *,
+        chat_id: int,
+        text: str,
+        action: str,
+        parse_mode: str | None = None,
+        reply_markup: dict | None = None,
+    ) -> dict:
+        await self._send_stateful_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
+        return {"status": "processed", "action": action}
+
+    async def _set_state_and_prompt_stateful_step(
+        self,
+        *,
+        telegram_user_id: int,
+        role_context: str,
+        state_key: str,
+        payload: dict | None,
+        chat_id: int,
+        text: str,
+        action: str,
+        parse_mode: str | None = None,
+        reply_markup: dict | None = None,
+    ) -> dict:
+        await self._conversation_state_service.set_state(
+            telegram_user_id=telegram_user_id,
+            role_context=role_context,
+            state_key=state_key,
+            payload=payload,
+        )
+        return await self._return_stateful_message(
+            chat_id=chat_id,
+            text=text,
+            action=action,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
+
+    async def _clear_state_and_return_stateful_message(
+        self,
+        *,
+        telegram_user_id: int,
+        chat_id: int,
+        text: str,
+        action: str,
+        parse_mode: str | None = None,
+        reply_markup: dict | None = None,
+    ) -> dict:
+        await self._conversation_state_service.clear_state(telegram_user_id=telegram_user_id)
+        return await self._return_stateful_message(
+            chat_id=chat_id,
+            text=text,
+            action=action,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
+
+    async def _render_candidate_dashboard_completion_screen(
+        self,
+        *,
+        actor: TelegramUser,
+        chat_id: int,
+        access_token: str,
+        candidate,
+        created_now: bool,
+        reply_markup: dict | None,
+        follow_up_text: str | None = None,
+    ) -> None:
+        stats = await self._safe_get_candidate_statistics(
+            access_token=access_token,
+            candidate_id=candidate.id,
+        )
+        message_text = self._build_candidate_dashboard_message(
+            first_name=actor.first_name,
+            candidate=candidate,
+            statistics=stats,
+            created_now=created_now,
+        )
+        if follow_up_text:
+            message_text = f"{message_text}\n\n{follow_up_text}"
+        await self._telegram_client.send_message(
+            chat_id=chat_id,
+            text=message_text,
+            parse_mode="Markdown",
+            reply_markup=reply_markup,
+        )
+
+    async def _render_employer_dashboard_completion_screen(
+        self,
+        *,
+        actor: TelegramUser,
+        chat_id: int,
+        access_token: str,
+        employer,
+        created_now: bool,
+        reply_markup: dict | None,
+        follow_up_text: str | None = None,
+    ) -> None:
+        stats = await self._safe_get_employer_statistics(
+            access_token=access_token,
+            employer_id=employer.id,
+        )
+        message_text = self._build_employer_dashboard_message(
+            first_name=actor.first_name,
+            employer=employer,
+            statistics=stats,
+            created_now=created_now,
+        )
+        if follow_up_text:
+            message_text = f"{message_text}\n\n{follow_up_text}"
+        await self._telegram_client.send_message(
+            chat_id=chat_id,
+            text=message_text,
+            parse_mode="Markdown",
+            reply_markup=reply_markup,
+        )
+
+    async def _complete_employer_search_text_step(
+        self,
+        *,
+        actor: TelegramUser,
+        chat_id: int,
+        payload: dict,
+        step: str,
+        saved_action: str,
+        saved_from_confirm_action: str,
+        next_state_key: str,
+        next_text: str,
+        next_step: str,
+        next_parse_mode: str | None = None,
+        next_allow_skip: bool = False,
+    ) -> dict:
+        if self._is_employer_search_edit_step(payload, step=step):
+            await self._render_employer_search_confirm_step(
+                telegram_user_id=actor.id,
+                chat_id=chat_id,
+                payload=payload,
+            )
+            return {"status": "processed", "action": saved_from_confirm_action}
+
+        await self._set_state_and_render_wizard_step(
+            telegram_user_id=actor.id,
+            role_context=ROLE_EMPLOYER,
+            state_key=next_state_key,
+            payload=payload,
+            chat_id=chat_id,
+            text=next_text,
+            parse_mode=next_parse_mode,
+            reply_markup=await self._build_employer_search_wizard_controls_markup(
+                telegram_user_id=actor.id,
+                step=next_step,
+                allow_skip=next_allow_skip,
+            ),
+        )
+        return {"status": "processed", "action": saved_action}
+
+    async def _complete_employer_search_render_step(
+        self,
+        *,
+        actor: TelegramUser,
+        chat_id: int,
+        payload: dict,
+        step: str,
+        saved_action: str,
+        saved_from_confirm_action: str,
+        render_next,
+    ) -> dict:
+        if self._is_employer_search_edit_step(payload, step=step):
+            await self._render_employer_search_confirm_step(
+                telegram_user_id=actor.id,
+                chat_id=chat_id,
+                payload=payload,
+            )
+            return {"status": "processed", "action": saved_from_confirm_action}
+
+        await render_next()
+        return {"status": "processed", "action": saved_action}
+
     async def _handle_stateful_message(
         self,
         *,
@@ -121,7 +320,7 @@ class StatefulMessageHandlersMixin:
         text = (message.text or "").strip()
 
         if not text:
-            await self._telegram_client.send_message(
+            await self._send_stateful_message(
                 chat_id=chat_id,
                 text="Отправь текстовым сообщением нужное значение.",
             )
@@ -133,52 +332,48 @@ class StatefulMessageHandlersMixin:
                 field_label="Отображаемое имя",
             )
             if error_text is not None:
-                await self._telegram_client.send_message(
+                await self._send_stateful_message(
                     chat_id=chat_id,
                     text=error_text,
                 )
                 return {"status": "processed", "action": "candidate_registration_display_name_invalid"}
-            await self._conversation_state_service.set_state(
+            return await self._set_state_and_prompt_stateful_step(
                 telegram_user_id=actor.id,
                 role_context=ROLE_CANDIDATE,
                 state_key=STATE_CANDIDATE_REG_HEADLINE_ROLE,
                 payload={"display_name": display_name},
-            )
-            await self._telegram_client.send_message(
                 chat_id=chat_id,
                 text="Теперь укажи основную роль в поиске, например: Python Developer.",
+                action="candidate_registration_display_name_saved",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
-            return {"status": "processed", "action": "candidate_registration_display_name_saved"}
 
         if state.state_key == STATE_CANDIDATE_REG_HEADLINE_ROLE:
             display_name = self._extract_payload_text(state.payload, "display_name")
             if not display_name:
-                await self._conversation_state_service.set_state(
+                return await self._set_state_and_prompt_stateful_step(
                     telegram_user_id=actor.id,
                     role_context=ROLE_CANDIDATE,
                     state_key=STATE_CANDIDATE_REG_DISPLAY_NAME,
                     payload=None,
-                )
-                await self._telegram_client.send_message(
                     chat_id=chat_id,
                     text=(
                         "Состояние регистрации сброшено. "
                         "Введи отображаемое имя кандидата ещё раз."
                     ),
+                    action="candidate_registration_reset",
                 )
-                return {"status": "processed", "action": "candidate_registration_reset"}
 
             access_token = await self._auth_session_service.get_valid_access_token(
                 telegram_user_id=actor.id
             )
             if access_token is None:
-                await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-                await self._telegram_client.send_message(
+                return await self._clear_state_and_return_stateful_message(
+                    telegram_user_id=actor.id,
                     chat_id=chat_id,
                     text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                    action="session_expired",
                 )
-                return {"status": "processed", "action": "session_expired"}
 
             telegram_contact = self._build_telegram_contact(actor)
             idempotency_key = self._build_idempotency_key(
@@ -209,32 +404,22 @@ class StatefulMessageHandlersMixin:
                 return {"status": "processed", "action": "candidate_gateway_error"}
 
             await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-
-            stats = await self._safe_get_candidate_statistics(
-                access_token=access_token,
-                candidate_id=candidate.id,
-            )
-
-            await self._telegram_client.send_message(
+            await self._render_candidate_dashboard_completion_screen(
+                actor=actor,
                 chat_id=chat_id,
-                text=(
-                    self._build_candidate_dashboard_message(
-                        first_name=actor.first_name,
-                        candidate=candidate,
-                        statistics=stats,
-                        created_now=True,
-                    )
-                    + "\n\n"
-                    + "Базовая регистрация завершена.\n"
-                    + "Хочешь продолжить и заполнить дополнительные поля профиля?"
-                ),
-                parse_mode="Markdown",
+                access_token=access_token,
+                candidate=candidate,
+                created_now=True,
                 reply_markup=await self._build_candidate_registration_continue_markup(actor.id),
+                follow_up_text=(
+                    "Базовая регистрация завершена.\n"
+                    "Хочешь продолжить и заполнить дополнительные поля профиля?"
+                ),
             )
             return {"status": "processed", "action": "candidate_registered_minimal"}
 
         if state.state_key == STATE_CANDIDATE_REG_WORK_MODES:
-            await self._telegram_client.send_message(
+            await self._send_stateful_message(
                 chat_id=chat_id,
                 text=(
                     "Полная регистрация кандидата\n\n"
@@ -253,7 +438,7 @@ class StatefulMessageHandlersMixin:
             }
 
         if state.state_key == STATE_CANDIDATE_REG_CONTACTS_VISIBILITY:
-            await self._telegram_client.send_message(
+            await self._send_stateful_message(
                 chat_id=chat_id,
                 text=(
                     "Полная регистрация кандидата\n\n"
@@ -273,7 +458,7 @@ class StatefulMessageHandlersMixin:
             }
 
         if state.state_key == STATE_CANDIDATE_REG_ENGLISH_LEVEL:
-            await self._telegram_client.send_message(
+            await self._send_stateful_message(
                 chat_id=chat_id,
                 text=(
                     "Полная регистрация кандидата\n\n"
@@ -320,7 +505,7 @@ class StatefulMessageHandlersMixin:
                     state_key=STATE_CANDIDATE_REG_WORK_MODES,
                     payload={"selected_work_modes": []},
                 )
-                await self._telegram_client.send_message(
+                await self._send_stateful_message(
                     chat_id=chat_id,
                     text=(
                         "Не удалось восстановить данные продолжения регистрации.\n"
@@ -342,96 +527,81 @@ class StatefulMessageHandlersMixin:
             else:
                 parsed_salary = self._parse_search_salary(normalized_salary)
                 if parsed_salary is None:
-                    await self._telegram_client.send_message(
+                    return await self._return_stateful_message(
                         chat_id=chat_id,
                         text="Формат зарплаты: `min max currency`, например `250000 350000 RUB`.",
+                        action="candidate_registration_salary_invalid",
                         parse_mode="Markdown",
                     )
-                    return {
-                        "status": "processed",
-                        "action": "candidate_registration_salary_invalid",
-                    }
                 salary_min, salary_max, currency = parsed_salary
                 if salary_min < 0 or salary_max < 0 or salary_max < salary_min:
-                    await self._telegram_client.send_message(
+                    return await self._return_stateful_message(
                         chat_id=chat_id,
                         text="Проверь значения: min/max >= 0 и max >= min.",
+                        action="candidate_registration_salary_invalid",
                     )
-                    return {
-                        "status": "processed",
-                        "action": "candidate_registration_salary_invalid",
-                    }
                 if currency is not None and (len(currency) < 3 or len(currency) > 5):
-                    await self._telegram_client.send_message(
+                    return await self._return_stateful_message(
                         chat_id=chat_id,
                         text="Валюта должна быть кодом вроде RUB, USD, EUR.",
+                        action="candidate_registration_salary_invalid",
                     )
-                    return {
-                        "status": "processed",
-                        "action": "candidate_registration_salary_invalid",
-                    }
             payload["work_modes"] = work_modes
             payload["contacts_visibility"] = contacts_visibility
             payload["english_level"] = english_level
             payload["salary_min"] = salary_min
             payload["salary_max"] = salary_max
             payload["currency"] = currency
-            await self._conversation_state_service.set_state(
+            return await self._set_state_and_prompt_stateful_step(
                 telegram_user_id=actor.id,
                 role_context=ROLE_CANDIDATE,
                 state_key=STATE_CANDIDATE_REG_LOCATION,
                 payload=payload,
-            )
-            await self._telegram_client.send_message(
                 chat_id=chat_id,
                 text=(
                     "Полная регистрация кандидата\n\n"
                     "Укажи локацию (город/страна) или `-`, чтобы пропустить."
                 ),
+                action="candidate_registration_salary_saved",
                 parse_mode="Markdown",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
-            return {"status": "processed", "action": "candidate_registration_salary_saved"}
 
         if state.state_key == STATE_CANDIDATE_REG_LOCATION:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             payload["location"] = self._normalize_optional_user_input(text)
-            await self._conversation_state_service.set_state(
+            return await self._set_state_and_prompt_stateful_step(
                 telegram_user_id=actor.id,
                 role_context=ROLE_CANDIDATE,
                 state_key=STATE_CANDIDATE_REG_ABOUT_ME,
                 payload=payload,
-            )
-            await self._telegram_client.send_message(
                 chat_id=chat_id,
                 text=(
                     "Полная регистрация кандидата\n\n"
                     "Напиши кратко о себе или отправь `-`, чтобы пропустить."
                 ),
+                action="candidate_registration_location_saved",
                 parse_mode="Markdown",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
-            return {"status": "processed", "action": "candidate_registration_location_saved"}
 
         if state.state_key == STATE_CANDIDATE_REG_ABOUT_ME:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             payload["about_me"] = self._normalize_optional_user_input(text)
-            await self._conversation_state_service.set_state(
+            return await self._set_state_and_prompt_stateful_step(
                 telegram_user_id=actor.id,
                 role_context=ROLE_CANDIDATE,
                 state_key=STATE_CANDIDATE_REG_CONTACT_EMAIL,
                 payload=payload,
-            )
-            await self._telegram_client.send_message(
                 chat_id=chat_id,
                 text=(
                     "Полная регистрация кандидата\n\n"
                     "Укажи email или отправь `-`, чтобы пропустить."
                 ),
+                action="candidate_registration_about_saved",
                 parse_mode="Markdown",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
-            return {"status": "processed", "action": "candidate_registration_about_saved"}
 
         if state.state_key == STATE_CANDIDATE_REG_CONTACT_EMAIL:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
@@ -442,32 +612,27 @@ class StatefulMessageHandlersMixin:
                     raw_value=value,
                 )
                 if error_text is not None:
-                    await self._telegram_client.send_message(
+                    return await self._return_stateful_message(
                         chat_id=chat_id,
                         text=error_text,
+                        action="candidate_registration_contact_email_invalid",
                         parse_mode="Markdown",
                     )
-                    return {
-                        "status": "processed",
-                        "action": "candidate_registration_contact_email_invalid",
-                    }
             payload["contact_email"] = value
-            await self._conversation_state_service.set_state(
+            return await self._set_state_and_prompt_stateful_step(
                 telegram_user_id=actor.id,
                 role_context=ROLE_CANDIDATE,
                 state_key=STATE_CANDIDATE_REG_CONTACT_PHONE,
                 payload=payload,
-            )
-            await self._telegram_client.send_message(
                 chat_id=chat_id,
                 text=(
                     "Полная регистрация кандидата\n\n"
                     "Укажи телефон или отправь `-`, чтобы пропустить."
                 ),
+                action="candidate_registration_contact_email_saved",
                 parse_mode="Markdown",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
-            return {"status": "processed", "action": "candidate_registration_contact_email_saved"}
 
         if state.state_key == STATE_CANDIDATE_REG_CONTACT_PHONE:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
@@ -478,23 +643,18 @@ class StatefulMessageHandlersMixin:
                     raw_value=value,
                 )
                 if error_text is not None:
-                    await self._telegram_client.send_message(
+                    return await self._return_stateful_message(
                         chat_id=chat_id,
                         text=error_text,
+                        action="candidate_registration_contact_phone_invalid",
                         parse_mode="Markdown",
                     )
-                    return {
-                        "status": "processed",
-                        "action": "candidate_registration_contact_phone_invalid",
-                    }
             payload["contact_phone"] = value
-            await self._conversation_state_service.set_state(
+            return await self._set_state_and_prompt_stateful_step(
                 telegram_user_id=actor.id,
                 role_context=ROLE_CANDIDATE,
                 state_key=STATE_CANDIDATE_REG_SKILLS,
                 payload=payload,
-            )
-            await self._telegram_client.send_message(
                 chat_id=chat_id,
                 text=(
                     "Полная регистрация кандидата\n\n"
@@ -506,29 +666,27 @@ class StatefulMessageHandlersMixin:
                     "Пример: `Python; hard; 5`\n"
                     "Чтобы пропустить, отправь `-`."
                 ),
+                action="candidate_registration_contact_phone_saved",
                 parse_mode="Markdown",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
-            return {"status": "processed", "action": "candidate_registration_contact_phone_saved"}
 
         if state.state_key == STATE_CANDIDATE_REG_SKILLS:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             parsed_skills, error_text = self._parse_candidate_registration_skills(text)
             if error_text is not None:
-                await self._telegram_client.send_message(
+                return await self._return_stateful_message(
                     chat_id=chat_id,
                     text=error_text,
+                    action="candidate_registration_skills_invalid",
                     parse_mode="Markdown",
                 )
-                return {"status": "processed", "action": "candidate_registration_skills_invalid"}
             payload["skills"] = parsed_skills
-            await self._conversation_state_service.set_state(
+            return await self._set_state_and_prompt_stateful_step(
                 telegram_user_id=actor.id,
                 role_context=ROLE_CANDIDATE,
                 state_key=STATE_CANDIDATE_REG_EDUCATION,
                 payload=payload,
-            )
-            await self._telegram_client.send_message(
                 chat_id=chat_id,
                 text=(
                     "Полная регистрация кандидата\n\n"
@@ -538,29 +696,27 @@ class StatefulMessageHandlersMixin:
                     "Пример: `Bachelor; NSU; 2022`\n"
                     "Чтобы пропустить, отправь `-`."
                 ),
+                action="candidate_registration_skills_saved",
                 parse_mode="Markdown",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
-            return {"status": "processed", "action": "candidate_registration_skills_saved"}
 
         if state.state_key == STATE_CANDIDATE_REG_EDUCATION:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             parsed_education, error_text = self._parse_candidate_registration_education(text)
             if error_text is not None:
-                await self._telegram_client.send_message(
+                return await self._return_stateful_message(
                     chat_id=chat_id,
                     text=error_text,
+                    action="candidate_registration_education_invalid",
                     parse_mode="Markdown",
                 )
-                return {"status": "processed", "action": "candidate_registration_education_invalid"}
             payload["education"] = parsed_education
-            await self._conversation_state_service.set_state(
+            return await self._set_state_and_prompt_stateful_step(
                 telegram_user_id=actor.id,
                 role_context=ROLE_CANDIDATE,
                 state_key=STATE_CANDIDATE_REG_EXPERIENCES,
                 payload=payload,
-            )
-            await self._telegram_client.send_message(
                 chat_id=chat_id,
                 text=(
                     "Полная регистрация кандидата\n\n"
@@ -572,32 +728,27 @@ class StatefulMessageHandlersMixin:
                     "2024-02-01; FastAPI и PostgreSQL`\n"
                     "Чтобы пропустить, отправь `-`."
                 ),
+                action="candidate_registration_education_saved",
                 parse_mode="Markdown",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
-            return {"status": "processed", "action": "candidate_registration_education_saved"}
 
         if state.state_key == STATE_CANDIDATE_REG_EXPERIENCES:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             parsed_experiences, error_text = self._parse_candidate_registration_experiences(text)
             if error_text is not None:
-                await self._telegram_client.send_message(
+                return await self._return_stateful_message(
                     chat_id=chat_id,
                     text=error_text,
+                    action="candidate_registration_experiences_invalid",
                     parse_mode="Markdown",
                 )
-                return {
-                    "status": "processed",
-                    "action": "candidate_registration_experiences_invalid",
-                }
             payload["experiences"] = parsed_experiences
-            await self._conversation_state_service.set_state(
+            return await self._set_state_and_prompt_stateful_step(
                 telegram_user_id=actor.id,
                 role_context=ROLE_CANDIDATE,
                 state_key=STATE_CANDIDATE_REG_PROJECTS,
                 payload=payload,
-            )
-            await self._telegram_client.send_message(
                 chat_id=chat_id,
                 text=(
                     "Полная регистрация кандидата\n\n"
@@ -608,21 +759,21 @@ class StatefulMessageHandlersMixin:
                     "Пример: `ATS Bot; Telegram recruiting bot; https://github.com/org/repo`\n"
                     "Чтобы пропустить, отправь `-`."
                 ),
+                action="candidate_registration_experiences_saved",
                 parse_mode="Markdown",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
-            return {"status": "processed", "action": "candidate_registration_experiences_saved"}
 
         if state.state_key == STATE_CANDIDATE_REG_PROJECTS:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             parsed_projects, error_text = self._parse_candidate_registration_projects(text)
             if error_text is not None:
-                await self._telegram_client.send_message(
+                return await self._return_stateful_message(
                     chat_id=chat_id,
                     text=error_text,
+                    action="candidate_registration_projects_invalid",
                     parse_mode="Markdown",
                 )
-                return {"status": "processed", "action": "candidate_registration_projects_invalid"}
             payload["projects"] = parsed_projects
             return await self._complete_candidate_full_registration(
                 actor=actor,
@@ -665,7 +816,7 @@ class StatefulMessageHandlersMixin:
             )
 
         if state.state_key == STATE_CANDIDATE_EDIT_WORK_MODES:
-            await self._telegram_client.send_message(
+            await self._send_stateful_message(
                 chat_id=chat_id,
                 text=(
                     "Для выбора формата работы используй кнопки ниже.\n\n"
@@ -680,7 +831,7 @@ class StatefulMessageHandlersMixin:
             return {"status": "processed", "action": "candidate_edit_work_modes_keyboard_prompt"}
 
         if state.state_key == STATE_CANDIDATE_EDIT_ENGLISH_LEVEL:
-            await self._telegram_client.send_message(
+            await self._send_stateful_message(
                 chat_id=chat_id,
                 text=(
                     "Для выбора английского используй кнопки ниже.\n\n"
@@ -695,7 +846,7 @@ class StatefulMessageHandlersMixin:
             return {"status": "processed", "action": "candidate_edit_english_keyboard_prompt"}
 
         if state.state_key == STATE_CANDIDATE_EDIT_STATUS:
-            await self._telegram_client.send_message(
+            await self._send_stateful_message(
                 chat_id=chat_id,
                 text=(
                     "Для выбора статуса используй кнопки ниже.\n\n"
@@ -744,7 +895,7 @@ class StatefulMessageHandlersMixin:
             )
 
         if state.state_key == STATE_CANDIDATE_EDIT_CONTACTS_VISIBILITY:
-            await self._telegram_client.send_message(
+            await self._send_stateful_message(
                 chat_id=chat_id,
                 text=(
                     "Для выбора видимости контактов используй кнопки ниже.\n\n"
@@ -804,24 +955,21 @@ class StatefulMessageHandlersMixin:
                     field_label="Название компании",
                 )
                 if error_text is not None:
-                    await self._telegram_client.send_message(
+                    return await self._return_stateful_message(
                         chat_id=chat_id,
                         text=error_text,
+                        action="employer_registration_company_invalid",
                     )
-                    return {
-                        "status": "processed",
-                        "action": "employer_registration_company_invalid",
-                    }
             access_token = await self._auth_session_service.get_valid_access_token(
                 telegram_user_id=actor.id
             )
             if access_token is None:
-                await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-                await self._telegram_client.send_message(
+                return await self._clear_state_and_return_stateful_message(
+                    telegram_user_id=actor.id,
                     chat_id=chat_id,
                     text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                    action="session_expired",
                 )
-                return {"status": "processed", "action": "session_expired"}
 
             idempotency_key = self._build_idempotency_key(
                 telegram_user_id=actor.id,
@@ -850,49 +998,37 @@ class StatefulMessageHandlersMixin:
                 return {"status": "processed", "action": "employer_gateway_error"}
 
             await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-
-            stats = await self._safe_get_employer_statistics(
-                access_token=access_token,
-                employer_id=employer.id,
-            )
-
-            await self._telegram_client.send_message(
+            await self._render_employer_dashboard_completion_screen(
+                actor=actor,
                 chat_id=chat_id,
-                text=(
-                    self._build_employer_dashboard_message(
-                        first_name=actor.first_name,
-                        employer=employer,
-                        statistics=stats,
-                        created_now=True,
-                    )
-                    + "\n\n"
-                    + "Базовая регистрация завершена.\n"
-                    + "Хочешь продолжить и заполнить дополнительные поля профиля?"
-                ),
-                parse_mode="Markdown",
+                access_token=access_token,
+                employer=employer,
+                created_now=True,
                 reply_markup=await self._build_employer_registration_continue_markup(actor.id),
+                follow_up_text=(
+                    "Базовая регистрация завершена.\n"
+                    "Хочешь продолжить и заполнить дополнительные поля профиля?"
+                ),
             )
             return {"status": "processed", "action": "employer_registered_minimal"}
 
         if state.state_key == STATE_EMPLOYER_REG_CONTACT_TELEGRAM:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             payload["telegram"] = self._build_telegram_contact(actor)
-            await self._conversation_state_service.set_state(
+            return await self._set_state_and_prompt_stateful_step(
                 telegram_user_id=actor.id,
                 role_context=ROLE_EMPLOYER,
                 state_key=STATE_EMPLOYER_REG_CONTACT_EMAIL,
                 payload=payload,
-            )
-            await self._telegram_client.send_message(
                 chat_id=chat_id,
                 text=(
                     "Telegram-контакт компании синхронизирован автоматически.\n"
                     "Введи `email` компании или отправь `-`, чтобы пропустить."
                 ),
+                action="employer_registration_contact_telegram_saved",
                 parse_mode="Markdown",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
-            return {"status": "processed", "action": "employer_registration_contact_telegram_saved"}
 
         if state.state_key == STATE_EMPLOYER_REG_CONTACT_EMAIL:
             value = self._normalize_optional_user_input(text)
@@ -902,30 +1038,25 @@ class StatefulMessageHandlersMixin:
                     raw_value=value,
                 )
                 if error_text is not None:
-                    await self._telegram_client.send_message(
+                    return await self._return_stateful_message(
                         chat_id=chat_id,
                         text=error_text,
+                        action="employer_registration_contact_email_invalid",
                         parse_mode="Markdown",
                     )
-                    return {
-                        "status": "processed",
-                        "action": "employer_registration_contact_email_invalid",
-                    }
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             payload["email"] = value or None
-            await self._conversation_state_service.set_state(
+            return await self._set_state_and_prompt_stateful_step(
                 telegram_user_id=actor.id,
                 role_context=ROLE_EMPLOYER,
                 state_key=STATE_EMPLOYER_REG_CONTACT_PHONE,
                 payload=payload,
-            )
-            await self._telegram_client.send_message(
                 chat_id=chat_id,
                 text="Введи `phone` компании или отправь `-`, чтобы пропустить.",
+                action="employer_registration_contact_email_saved",
                 parse_mode="Markdown",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
-            return {"status": "processed", "action": "employer_registration_contact_email_saved"}
 
         if state.state_key == STATE_EMPLOYER_REG_CONTACT_PHONE:
             value = self._normalize_optional_user_input(text)
@@ -935,30 +1066,25 @@ class StatefulMessageHandlersMixin:
                     raw_value=value,
                 )
                 if error_text is not None:
-                    await self._telegram_client.send_message(
+                    return await self._return_stateful_message(
                         chat_id=chat_id,
                         text=error_text,
+                        action="employer_registration_contact_phone_invalid",
                         parse_mode="Markdown",
                     )
-                    return {
-                        "status": "processed",
-                        "action": "employer_registration_contact_phone_invalid",
-                    }
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             payload["phone"] = value or None
-            await self._conversation_state_service.set_state(
+            return await self._set_state_and_prompt_stateful_step(
                 telegram_user_id=actor.id,
                 role_context=ROLE_EMPLOYER,
                 state_key=STATE_EMPLOYER_REG_CONTACT_WEBSITE,
                 payload=payload,
-            )
-            await self._telegram_client.send_message(
                 chat_id=chat_id,
                 text="Введи `website` компании или отправь `-`, чтобы пропустить.",
+                action="employer_registration_contact_phone_saved",
                 parse_mode="Markdown",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
-            return {"status": "processed", "action": "employer_registration_contact_phone_saved"}
 
         if state.state_key == STATE_EMPLOYER_REG_CONTACT_WEBSITE:
             value = self._normalize_optional_user_input(text)
@@ -968,15 +1094,12 @@ class StatefulMessageHandlersMixin:
                     raw_value=value,
                 )
                 if error_text is not None:
-                    await self._telegram_client.send_message(
+                    return await self._return_stateful_message(
                         chat_id=chat_id,
                         text=error_text,
+                        action="employer_registration_contact_website_invalid",
                         parse_mode="Markdown",
                     )
-                    return {
-                        "status": "processed",
-                        "action": "employer_registration_contact_website_invalid",
-                    }
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             payload["website"] = value or None
             return await self._handle_employer_registration_contacts_complete(
@@ -1033,49 +1156,39 @@ class StatefulMessageHandlersMixin:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             title = text.strip()
             if len(title) < EMPLOYER_SEARCH_TITLE_MIN_LEN:
-                await self._telegram_client.send_message(
+                return await self._return_stateful_message(
                     chat_id=chat_id,
                     text=(
                         "Название должно быть не короче "
                         f"{EMPLOYER_SEARCH_TITLE_MIN_LEN} символов."
                     ),
+                    action="employer_search_title_invalid",
                 )
-                return {"status": "processed", "action": "employer_search_title_invalid"}
             if len(title) > EMPLOYER_SEARCH_TITLE_MAX_LEN:
-                await self._telegram_client.send_message(
+                return await self._return_stateful_message(
                     chat_id=chat_id,
                     text=(
                         "Название слишком длинное. Максимум "
                         f"{EMPLOYER_SEARCH_TITLE_MAX_LEN} символов."
                     ),
+                    action="employer_search_title_too_long",
                 )
-                return {"status": "processed", "action": "employer_search_title_too_long"}
 
             payload["title"] = title
-            if self._is_employer_search_edit_step(payload, step="title"):
-                await self._render_employer_search_confirm_step(
-                    telegram_user_id=actor.id,
-                    chat_id=chat_id,
-                    payload=payload,
-                )
-                return {"status": "processed", "action": "employer_search_title_saved_from_confirm"}
-            await self._set_state_and_render_wizard_step(
-                telegram_user_id=actor.id,
-                role_context=ROLE_EMPLOYER,
-                state_key=STATE_EMPLOYER_SEARCH_ROLE,
-                payload=payload,
+            return await self._complete_employer_search_text_step(
+                actor=actor,
                 chat_id=chat_id,
-                text=(
+                payload=payload,
+                step="title",
+                saved_action="employer_search_title_saved",
+                saved_from_confirm_action="employer_search_title_saved_from_confirm",
+                next_state_key=STATE_EMPLOYER_SEARCH_ROLE,
+                next_text=(
                     "Кабинет работодателя > Поиск > Новый поиск\n\n🧭 Мастер поиска\n\n"
                     "Теперь введи основную роль для поиска. Например: Python Backend Developer."
                 ),
-                reply_markup=await self._build_employer_search_wizard_controls_markup(
-                    telegram_user_id=actor.id,
-                    step="role",
-                    allow_skip=False,
-                ),
+                next_step="role",
             )
-            return {"status": "processed", "action": "employer_search_title_saved"}
 
         if state.state_key == STATE_EMPLOYER_SEARCH_ROLE:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
@@ -1101,190 +1214,145 @@ class StatefulMessageHandlersMixin:
                 )
                 return {"status": "processed", "action": "employer_search_reset"}
             if len(role) < EMPLOYER_SEARCH_ROLE_MIN_LEN:
-                await self._telegram_client.send_message(
+                return await self._return_stateful_message(
                     chat_id=chat_id,
                     text=f"Роль должна быть не короче {EMPLOYER_SEARCH_ROLE_MIN_LEN} символов.",
+                    action="employer_search_role_invalid",
                 )
-                return {"status": "processed", "action": "employer_search_role_invalid"}
             if len(role) > EMPLOYER_SEARCH_ROLE_MAX_LEN:
-                await self._telegram_client.send_message(
+                return await self._return_stateful_message(
                     chat_id=chat_id,
                     text=f"Роль слишком длинная. Максимум {EMPLOYER_SEARCH_ROLE_MAX_LEN} символов.",
+                    action="employer_search_role_too_long",
                 )
-                return {"status": "processed", "action": "employer_search_role_too_long"}
 
             payload["role"] = role
-            if self._is_employer_search_edit_step(payload, step="role"):
-                await self._render_employer_search_confirm_step(
-                    telegram_user_id=actor.id,
-                    chat_id=chat_id,
-                    payload=payload,
-                )
-                return {"status": "processed", "action": "employer_search_role_saved_from_confirm"}
-            await self._set_state_and_render_wizard_step(
-                telegram_user_id=actor.id,
-                role_context=ROLE_EMPLOYER,
-                state_key=STATE_EMPLOYER_SEARCH_MUST_SKILLS,
-                payload=payload,
+            return await self._complete_employer_search_text_step(
+                actor=actor,
                 chat_id=chat_id,
-                text=(
+                payload=payload,
+                step="role",
+                saved_action="employer_search_role_saved",
+                saved_from_confirm_action="employer_search_role_saved_from_confirm",
+                next_state_key=STATE_EMPLOYER_SEARCH_MUST_SKILLS,
+                next_text=(
                     "Кабинет работодателя > Поиск > Новый поиск\n\n🧭 Мастер поиска\n\n"
                     "Введи обязательные навыки через запятую.\n"
                     "Можно указать уровень: `Python:4, FastAPI:3`.\n"
                     "Отправь `-`, если шаг пропускаем."
                 ),
-                parse_mode="Markdown",
-                reply_markup=await self._build_employer_search_wizard_controls_markup(
-                    telegram_user_id=actor.id,
-                    step="must_skills",
-                    allow_skip=True,
-                ),
+                next_step="must_skills",
+                next_parse_mode="Markdown",
+                next_allow_skip=True,
             )
-            return {"status": "processed", "action": "employer_search_role_saved"}
 
         if state.state_key == STATE_EMPLOYER_SEARCH_MUST_SKILLS:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             parsed = self._parse_search_skill_list(text)
             if parsed is None:
-                await self._telegram_client.send_message(
+                return await self._return_stateful_message(
                     chat_id=chat_id,
                     text="Неверный формат навыков. Пример: `Python:4, FastAPI:3` или `-`.",
+                    action="employer_search_must_skills_invalid",
                     parse_mode="Markdown",
                 )
-                return {"status": "processed", "action": "employer_search_must_skills_invalid"}
             payload["must_skills"] = parsed
-            if self._is_employer_search_edit_step(payload, step="must_skills"):
-                await self._render_employer_search_confirm_step(
-                    telegram_user_id=actor.id,
-                    chat_id=chat_id,
-                    payload=payload,
-                )
-                return {
-                    "status": "processed",
-                    "action": "employer_search_must_skills_saved_from_confirm",
-                }
-            await self._set_state_and_render_wizard_step(
-                telegram_user_id=actor.id,
-                role_context=ROLE_EMPLOYER,
-                state_key=STATE_EMPLOYER_SEARCH_NICE_SKILLS,
-                payload=payload,
+            return await self._complete_employer_search_text_step(
+                actor=actor,
                 chat_id=chat_id,
-                text=(
+                payload=payload,
+                step="must_skills",
+                saved_action="employer_search_must_skills_saved",
+                saved_from_confirm_action="employer_search_must_skills_saved_from_confirm",
+                next_state_key=STATE_EMPLOYER_SEARCH_NICE_SKILLS,
+                next_text=(
                     "Кабинет работодателя > Поиск > Новый поиск\n\n🧭 Мастер поиска\n\n"
                     "Введи желательные навыки через запятую.\n"
                     "Пример: `Docker:3, AWS`.\n"
                     "Отправь `-`, если шаг пропускаем."
                 ),
-                parse_mode="Markdown",
-                reply_markup=await self._build_employer_search_wizard_controls_markup(
-                    telegram_user_id=actor.id,
-                    step="nice_skills",
-                    allow_skip=True,
-                ),
+                next_step="nice_skills",
+                next_parse_mode="Markdown",
+                next_allow_skip=True,
             )
-            return {"status": "processed", "action": "employer_search_must_skills_saved"}
 
         if state.state_key == STATE_EMPLOYER_SEARCH_NICE_SKILLS:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             parsed = self._parse_search_skill_list(text)
             if parsed is None:
-                await self._telegram_client.send_message(
+                return await self._return_stateful_message(
                     chat_id=chat_id,
                     text="Неверный формат навыков. Пример: `Docker:3, AWS` или `-`.",
+                    action="employer_search_nice_skills_invalid",
                     parse_mode="Markdown",
                 )
-                return {"status": "processed", "action": "employer_search_nice_skills_invalid"}
             payload["nice_skills"] = parsed
-            if self._is_employer_search_edit_step(payload, step="nice_skills"):
-                await self._render_employer_search_confirm_step(
-                    telegram_user_id=actor.id,
-                    chat_id=chat_id,
-                    payload=payload,
-                )
-                return {
-                    "status": "processed",
-                    "action": "employer_search_nice_skills_saved_from_confirm",
-                }
-            await self._set_state_and_render_wizard_step(
-                telegram_user_id=actor.id,
-                role_context=ROLE_EMPLOYER,
-                state_key=STATE_EMPLOYER_SEARCH_EXPERIENCE,
-                payload=payload,
+            return await self._complete_employer_search_text_step(
+                actor=actor,
                 chat_id=chat_id,
-                text=(
+                payload=payload,
+                step="nice_skills",
+                saved_action="employer_search_nice_skills_saved",
+                saved_from_confirm_action="employer_search_nice_skills_saved_from_confirm",
+                next_state_key=STATE_EMPLOYER_SEARCH_EXPERIENCE,
+                next_text=(
                     "Кабинет работодателя > Поиск > Новый поиск\n\n🧭 Мастер поиска\n\n"
                     "Диапазон опыта в формате `min-max`, например `2-5`. "
                     "Отправь `-`, чтобы пропустить."
                 ),
-                parse_mode="Markdown",
-                reply_markup=await self._build_employer_search_wizard_controls_markup(
-                    telegram_user_id=actor.id,
-                    step="experience",
-                    allow_skip=True,
-                ),
+                next_step="experience",
+                next_parse_mode="Markdown",
+                next_allow_skip=True,
             )
-            return {"status": "processed", "action": "employer_search_nice_skills_saved"}
 
         if state.state_key == STATE_EMPLOYER_SEARCH_EXPERIENCE:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             experience = self._parse_search_experience_range(text)
             if experience is None:
-                await self._telegram_client.send_message(
+                return await self._return_stateful_message(
                     chat_id=chat_id,
                     text="Неверный формат опыта. Используй `min-max` (например `2-5`) или `-`.",
+                    action="employer_search_experience_invalid",
                     parse_mode="Markdown",
                 )
-                return {"status": "processed", "action": "employer_search_experience_invalid"}
             payload["experience_min"] = experience[0]
             payload["experience_max"] = experience[1]
-            if self._is_employer_search_edit_step(payload, step="experience"):
-                await self._render_employer_search_confirm_step(
-                    telegram_user_id=actor.id,
-                    chat_id=chat_id,
-                    payload=payload,
-                )
-                return {
-                    "status": "processed",
-                    "action": "employer_search_experience_saved_from_confirm",
-                }
-            await self._set_state_and_render_wizard_step(
-                telegram_user_id=actor.id,
-                role_context=ROLE_EMPLOYER,
-                state_key=STATE_EMPLOYER_SEARCH_LOCATION,
-                payload=payload,
+            return await self._complete_employer_search_text_step(
+                actor=actor,
                 chat_id=chat_id,
-                text=(
+                payload=payload,
+                step="experience",
+                saved_action="employer_search_experience_saved",
+                saved_from_confirm_action="employer_search_experience_saved_from_confirm",
+                next_state_key=STATE_EMPLOYER_SEARCH_LOCATION,
+                next_text=(
                     "Кабинет работодателя > Поиск > Новый поиск\n\n🧭 Мастер поиска\n\n"
                     "Введи желаемую локацию (город/страна) или `-`, чтобы пропустить."
                 ),
-                reply_markup=await self._build_employer_search_wizard_controls_markup(
-                    telegram_user_id=actor.id,
-                    step="location",
-                    allow_skip=True,
-                ),
+                next_step="location",
+                next_allow_skip=True,
             )
-            return {"status": "processed", "action": "employer_search_experience_saved"}
 
         if state.state_key == STATE_EMPLOYER_SEARCH_LOCATION:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             payload["location"] = self._normalize_optional_user_input(text)
-            if self._is_employer_search_edit_step(payload, step="location"):
-                await self._render_employer_search_confirm_step(
+            async def _render_next_work_modes_step() -> None:
+                await self._render_employer_search_work_modes_step(
                     telegram_user_id=actor.id,
                     chat_id=chat_id,
                     payload=payload,
+                    allow_skip=True,
                 )
-                return {
-                    "status": "processed",
-                    "action": "employer_search_location_saved_from_confirm",
-                }
-            await self._render_employer_search_work_modes_step(
-                telegram_user_id=actor.id,
+
+            return await self._complete_employer_search_render_step(
+                actor=actor,
                 chat_id=chat_id,
                 payload=payload,
-                allow_skip=True,
+                step="location",
+                saved_action="employer_search_location_saved",
+                saved_from_confirm_action="employer_search_location_saved_from_confirm",
+                render_next=_render_next_work_modes_step,
             )
-            return {"status": "processed", "action": "employer_search_location_saved"}
 
         if state.state_key == STATE_EMPLOYER_SEARCH_WORK_MODES:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
@@ -1300,32 +1368,32 @@ class StatefulMessageHandlersMixin:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
             salary = self._parse_search_salary(text)
             if salary is None:
-                await self._telegram_client.send_message(
+                return await self._return_stateful_message(
                     chat_id=chat_id,
                     text="Неверный формат зарплаты. Пример: `150000 250000 RUB` или `-`.",
+                    action="employer_search_salary_invalid",
                     parse_mode="Markdown",
                 )
-                return {"status": "processed", "action": "employer_search_salary_invalid"}
             payload["salary_min"] = salary[0]
             payload["salary_max"] = salary[1]
             payload["currency"] = salary[2]
-            if self._is_employer_search_edit_step(payload, step="salary"):
-                await self._render_employer_search_confirm_step(
+            async def _render_next_english_step() -> None:
+                await self._render_employer_search_english_step(
                     telegram_user_id=actor.id,
                     chat_id=chat_id,
                     payload=payload,
+                    allow_skip=True,
                 )
-                return {
-                    "status": "processed",
-                    "action": "employer_search_salary_saved_from_confirm",
-                }
-            await self._render_employer_search_english_step(
-                telegram_user_id=actor.id,
+
+            return await self._complete_employer_search_render_step(
+                actor=actor,
                 chat_id=chat_id,
                 payload=payload,
-                allow_skip=True,
+                step="salary",
+                saved_action="employer_search_salary_saved",
+                saved_from_confirm_action="employer_search_salary_saved_from_confirm",
+                render_next=_render_next_english_step,
             )
-            return {"status": "processed", "action": "employer_search_salary_saved"}
 
         if state.state_key == STATE_EMPLOYER_SEARCH_ENGLISH:
             payload = dict(state.payload) if isinstance(state.payload, dict) else {}
@@ -1344,23 +1412,33 @@ class StatefulMessageHandlersMixin:
                 normalized_about is not None
                 and len(normalized_about) > EMPLOYER_SEARCH_ABOUT_MAX_LEN
             ):
-                await self._telegram_client.send_message(
+                return await self._return_stateful_message(
                     chat_id=chat_id,
                     text=(
                         "Описание слишком длинное. Максимум "
                         f"{EMPLOYER_SEARCH_ABOUT_MAX_LEN} символов."
                     ),
+                    action="employer_search_about_too_long",
                 )
-                return {"status": "processed", "action": "employer_search_about_too_long"}
             payload["about_me"] = normalized_about
-            await self._render_employer_search_confirm_step(
-                telegram_user_id=actor.id,
+            async def _render_next_confirm_step() -> None:
+                await self._render_employer_search_confirm_step(
+                    telegram_user_id=actor.id,
+                    chat_id=chat_id,
+                    payload=payload,
+                )
+
+            return await self._complete_employer_search_render_step(
+                actor=actor,
                 chat_id=chat_id,
                 payload=payload,
+                step="about",
+                saved_action="employer_search_about_saved",
+                saved_from_confirm_action="employer_search_about_saved",
+                render_next=_render_next_confirm_step,
             )
-            return {"status": "processed", "action": "employer_search_about_saved"}
 
-        await self._telegram_client.send_message(
+        await self._send_stateful_message(
             chat_id=chat_id,
             text="Неизвестное состояние. Нажми /start, чтобы начать заново.",
         )
@@ -1377,12 +1455,12 @@ class StatefulMessageHandlersMixin:
             telegram_user_id=actor.id
         )
         if access_token is None:
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            return await self._clear_state_and_return_stateful_message(
+                telegram_user_id=actor.id,
                 chat_id=chat_id,
                 text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                action="session_expired",
             )
-            return {"status": "processed", "action": "session_expired"}
 
         try:
             candidate = await self._run_candidate_gateway_call(
@@ -1394,12 +1472,12 @@ class StatefulMessageHandlersMixin:
                 ),
             )
             if candidate is None:
-                await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-                await self._telegram_client.send_message(
+                return await self._clear_state_and_return_stateful_message(
+                    telegram_user_id=actor.id,
                     chat_id=chat_id,
                     text="Профиль кандидата не найден. Нажми /start, чтобы начать заново.",
+                    action="candidate_not_found",
                 )
-                return {"status": "processed", "action": "candidate_not_found"}
 
             idempotency_key = self._build_idempotency_key(
                 telegram_user_id=actor.id,
@@ -1447,19 +1525,12 @@ class StatefulMessageHandlersMixin:
             return {"status": "processed", "action": "candidate_gateway_error"}
 
         await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-        stats = await self._safe_get_candidate_statistics(
-            access_token=access_token,
-            candidate_id=updated.id,
-        )
-        await self._telegram_client.send_message(
+        await self._render_candidate_dashboard_completion_screen(
+            actor=actor,
             chat_id=chat_id,
-            text=self._build_candidate_dashboard_message(
-                first_name=actor.first_name,
-                candidate=updated,
-                statistics=stats,
-                created_now=False,
-            ),
-            parse_mode="Markdown",
+            access_token=access_token,
+            candidate=updated,
+            created_now=False,
             reply_markup=await self._build_candidate_dashboard_markup(actor.id),
         )
         return {"status": "processed", "action": "candidate_registered_extended"}
@@ -1728,18 +1799,10 @@ class StatefulMessageHandlersMixin:
             )
             return {"status": "processed", "action": "candidate_registration_work_modes_saved"}
 
-        await self._telegram_client.answer_callback_query(
-            callback_query_id=callback.id,
-            text="Сохраняю формат работы",
-            show_alert=False,
-        )
-        await self._telegram_client.send_message(
-            chat_id=self._resolve_chat_id(callback, actor),
-            text=f"Текущий выбор: {self._format_work_modes_choice_for_prompt(payload)}",
-        )
-        return await self._handle_candidate_edit_submit(
+        return await self._submit_candidate_choice_edit_from_callback(
+            callback=callback,
             actor=actor,
-            chat_id=self._resolve_chat_id(callback, actor),
+            callback_text="Сохраняю формат работы",
             field_name="work_modes",
             raw_value=selected,
         )
@@ -1879,18 +1942,10 @@ class StatefulMessageHandlersMixin:
                 "action": "candidate_registration_contacts_visibility_saved",
             }
 
-        await self._telegram_client.answer_callback_query(
-            callback_query_id=callback.id,
-            text="Сохраняю видимость контактов",
-            show_alert=False,
-        )
-        await self._telegram_client.send_message(
-            chat_id=self._resolve_chat_id(callback, actor),
-            text=f"Текущий выбор: {self._humanize_contacts_visibility_for_profile(value)}",
-        )
-        return await self._handle_candidate_edit_submit(
+        return await self._submit_candidate_choice_edit_from_callback(
+            callback=callback,
             actor=actor,
-            chat_id=self._resolve_chat_id(callback, actor),
+            callback_text="Сохраняю видимость контактов",
             field_name="contacts_visibility",
             raw_value=value,
         )
@@ -1951,18 +2006,10 @@ class StatefulMessageHandlersMixin:
             )
             return {"status": "processed", "action": "candidate_registration_english_saved"}
 
-        await self._telegram_client.answer_callback_query(
-            callback_query_id=callback.id,
-            text="Сохраняю уровень английского",
-            show_alert=False,
-        )
-        await self._telegram_client.send_message(
-            chat_id=self._resolve_chat_id(callback, actor),
-            text=f"Текущий выбор: {english_level or '—'}",
-        )
-        return await self._handle_candidate_edit_submit(
+        return await self._submit_candidate_choice_edit_from_callback(
+            callback=callback,
             actor=actor,
-            chat_id=self._resolve_chat_id(callback, actor),
+            callback_text="Сохраняю уровень английского",
             field_name="english_level",
             raw_value=english_level,
         )
@@ -1992,20 +2039,33 @@ class StatefulMessageHandlersMixin:
             )
             return {"status": "processed", "action": "candidate_status_choice_invalid"}
 
+        return await self._submit_candidate_choice_edit_from_callback(
+            callback=callback,
+            actor=actor,
+            callback_text="Сохраняю статус",
+            field_name="status",
+            raw_value=value,
+        )
+
+    async def _submit_candidate_choice_edit_from_callback(
+        self,
+        *,
+        callback: TelegramCallbackQuery,
+        actor: TelegramUser,
+        callback_text: str,
+        field_name: str,
+        raw_value: object | None,
+    ) -> dict:
         await self._telegram_client.answer_callback_query(
             callback_query_id=callback.id,
-            text="Сохраняю статус",
+            text=callback_text,
             show_alert=False,
-        )
-        await self._telegram_client.send_message(
-            chat_id=self._resolve_chat_id(callback, actor),
-            text=f"Текущий выбор: {self._humanize_candidate_status(value)}",
         )
         return await self._handle_candidate_edit_submit(
             actor=actor,
             chat_id=self._resolve_chat_id(callback, actor),
-            field_name="status",
-            raw_value=value,
+            field_name=field_name,
+            raw_value=raw_value,
         )
 
     def _extract_selected_work_modes_payload(self, payload: dict | None) -> list[str]:

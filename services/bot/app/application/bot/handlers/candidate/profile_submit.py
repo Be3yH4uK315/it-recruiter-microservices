@@ -12,6 +12,66 @@ logger = get_logger(__name__)
 
 
 class CandidateProfileSubmitHandlersMixin:
+    async def _send_candidate_submit_message(
+        self,
+        *,
+        chat_id: int,
+        text: str,
+        parse_mode: str | None = None,
+    ) -> None:
+        await self._telegram_client.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=parse_mode,
+        )
+
+    async def _clear_candidate_submit_state_and_send_message(
+        self,
+        *,
+        telegram_user_id: int,
+        chat_id: int,
+        text: str,
+        action: str,
+        parse_mode: str | None = None,
+    ) -> dict:
+        await self._conversation_state_service.clear_state(telegram_user_id=telegram_user_id)
+        await self._send_candidate_submit_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=parse_mode,
+        )
+        return {"status": "processed", "action": action}
+
+    async def _clear_candidate_submit_state_and_handle_gateway_error(
+        self,
+        *,
+        telegram_user_id: int,
+        chat_id: int,
+        exc: CandidateGatewayError,
+    ) -> dict:
+        await self._conversation_state_service.clear_state(telegram_user_id=telegram_user_id)
+        await self._handle_candidate_gateway_error(chat_id=chat_id, exc=exc)
+        return {"status": "processed", "action": "candidate_gateway_error"}
+
+    async def _finish_candidate_submit_success(
+        self,
+        *,
+        telegram_user_id: int,
+        actor: TelegramUser,
+        chat_id: int,
+        access_token: str,
+        candidate,
+        action: str,
+    ) -> dict:
+        await self._conversation_state_service.clear_state(telegram_user_id=telegram_user_id)
+        await self._render_candidate_dashboard_after_submit(
+            actor=actor,
+            chat_id=chat_id,
+            access_token=access_token,
+            candidate=candidate,
+        )
+        return {"status": "processed", "action": action}
+
     async def _render_candidate_dashboard_after_submit(
         self,
         *,
@@ -48,12 +108,12 @@ class CandidateProfileSubmitHandlersMixin:
             telegram_user_id=actor.id
         )
         if access_token is None:
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            return await self._clear_candidate_submit_state_and_send_message(
+                telegram_user_id=actor.id,
                 chat_id=chat_id,
                 text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                action="session_expired",
             )
-            return {"status": "processed", "action": "session_expired"}
 
         try:
             candidate = await self._run_candidate_gateway_call(
@@ -70,17 +130,19 @@ class CandidateProfileSubmitHandlersMixin:
                 extra={"telegram_user_id": actor.id, "field_name": field_name},
                 exc_info=exc,
             )
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._handle_candidate_gateway_error(chat_id=chat_id, exc=exc)
-            return {"status": "processed", "action": "candidate_gateway_error"}
+            return await self._clear_candidate_submit_state_and_handle_gateway_error(
+                telegram_user_id=actor.id,
+                chat_id=chat_id,
+                exc=exc,
+            )
 
         if candidate is None:
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            return await self._clear_candidate_submit_state_and_send_message(
+                telegram_user_id=actor.id,
                 chat_id=chat_id,
                 text="Профиль кандидата не найден. Нажми /start, чтобы начать заново.",
+                action="candidate_not_found",
             )
-            return {"status": "processed", "action": "candidate_not_found"}
 
         normalized_value = raw_value.strip() if isinstance(raw_value, str) else raw_value
         if (
@@ -125,12 +187,12 @@ class CandidateProfileSubmitHandlersMixin:
             "skills": UNSET,
         }
         if field_name not in update_kwargs:
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            return await self._clear_candidate_submit_state_and_send_message(
+                telegram_user_id=actor.id,
                 chat_id=chat_id,
                 text="Неизвестное поле редактирования. Нажми /start, чтобы открыть меню заново.",
+                action="candidate_edit_invalid_field",
             )
-            return {"status": "processed", "action": "candidate_edit_invalid_field"}
 
         update_kwargs[field_name] = normalized_value
         idempotency_key = self._build_idempotency_key(
@@ -172,18 +234,20 @@ class CandidateProfileSubmitHandlersMixin:
                 },
                 exc_info=exc,
             )
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._handle_candidate_gateway_error(chat_id=chat_id, exc=exc)
-            return {"status": "processed", "action": "candidate_gateway_error"}
+            return await self._clear_candidate_submit_state_and_handle_gateway_error(
+                telegram_user_id=actor.id,
+                chat_id=chat_id,
+                exc=exc,
+            )
 
-        await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-        await self._render_candidate_dashboard_after_submit(
+        return await self._finish_candidate_submit_success(
+            telegram_user_id=actor.id,
             actor=actor,
             chat_id=chat_id,
             access_token=access_token,
             candidate=updated,
+            action=f"candidate_edit_{field_name}_saved",
         )
-        return {"status": "processed", "action": f"candidate_edit_{field_name}_saved"}
 
     async def _handle_candidate_salary_submit(
         self,
@@ -198,12 +262,12 @@ class CandidateProfileSubmitHandlersMixin:
             telegram_user_id=actor.id
         )
         if access_token is None:
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            return await self._clear_candidate_submit_state_and_send_message(
+                telegram_user_id=actor.id,
                 chat_id=chat_id,
                 text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                action="session_expired",
             )
-            return {"status": "processed", "action": "session_expired"}
 
         try:
             candidate = await self._run_candidate_gateway_call(
@@ -220,17 +284,19 @@ class CandidateProfileSubmitHandlersMixin:
                 extra={"telegram_user_id": actor.id},
                 exc_info=exc,
             )
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._handle_candidate_gateway_error(chat_id=chat_id, exc=exc)
-            return {"status": "processed", "action": "candidate_gateway_error"}
+            return await self._clear_candidate_submit_state_and_handle_gateway_error(
+                telegram_user_id=actor.id,
+                chat_id=chat_id,
+                exc=exc,
+            )
 
         if candidate is None:
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            return await self._clear_candidate_submit_state_and_send_message(
+                telegram_user_id=actor.id,
                 chat_id=chat_id,
                 text="Профиль кандидата не найден. Нажми /start, чтобы начать заново.",
+                action="candidate_not_found",
             )
-            return {"status": "processed", "action": "candidate_not_found"}
 
         if normalized.lower() in {"-", "skip", "пропустить", "нет"}:
             salary_min = None
@@ -285,18 +351,20 @@ class CandidateProfileSubmitHandlersMixin:
                 extra={"telegram_user_id": actor.id},
                 exc_info=exc,
             )
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._handle_candidate_gateway_error(chat_id=chat_id, exc=exc)
-            return {"status": "processed", "action": "candidate_gateway_error"}
+            return await self._clear_candidate_submit_state_and_handle_gateway_error(
+                telegram_user_id=actor.id,
+                chat_id=chat_id,
+                exc=exc,
+            )
 
-        await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-        await self._render_candidate_dashboard_after_submit(
+        return await self._finish_candidate_submit_success(
+            telegram_user_id=actor.id,
             actor=actor,
             chat_id=chat_id,
             access_token=access_token,
             candidate=updated,
+            action="candidate_edit_salary_saved",
         )
-        return {"status": "processed", "action": "candidate_edit_salary_saved"}
 
     async def _handle_candidate_skills_submit(
         self,
@@ -630,12 +698,12 @@ class CandidateProfileSubmitHandlersMixin:
             telegram_user_id=actor.id
         )
         if access_token is None:
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            return await self._clear_candidate_submit_state_and_send_message(
+                telegram_user_id=actor.id,
                 chat_id=chat_id,
                 text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                action="session_expired",
             )
-            return {"status": "processed", "action": "session_expired"}
 
         try:
             candidate = await self._run_candidate_gateway_call(
@@ -652,17 +720,19 @@ class CandidateProfileSubmitHandlersMixin:
                 extra={"telegram_user_id": actor.id, "operation": operation},
                 exc_info=exc,
             )
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._handle_candidate_gateway_error(chat_id=chat_id, exc=exc)
-            return {"status": "processed", "action": "candidate_gateway_error"}
+            return await self._clear_candidate_submit_state_and_handle_gateway_error(
+                telegram_user_id=actor.id,
+                chat_id=chat_id,
+                exc=exc,
+            )
 
         if candidate is None:
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            return await self._clear_candidate_submit_state_and_send_message(
+                telegram_user_id=actor.id,
                 chat_id=chat_id,
                 text="Профиль кандидата не найден. Нажми /start, чтобы начать заново.",
+                action="candidate_not_found",
             )
-            return {"status": "processed", "action": "candidate_not_found"}
 
         idempotency_key = self._build_idempotency_key(
             telegram_user_id=actor.id,
@@ -686,18 +756,20 @@ class CandidateProfileSubmitHandlersMixin:
                 extra={"telegram_user_id": actor.id, "operation": operation},
                 exc_info=exc,
             )
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._handle_candidate_gateway_error(chat_id=chat_id, exc=exc)
-            return {"status": "processed", "action": "candidate_gateway_error"}
+            return await self._clear_candidate_submit_state_and_handle_gateway_error(
+                telegram_user_id=actor.id,
+                chat_id=chat_id,
+                exc=exc,
+            )
 
-        await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-        await self._render_candidate_dashboard_after_submit(
+        return await self._finish_candidate_submit_success(
+            telegram_user_id=actor.id,
             actor=actor,
             chat_id=chat_id,
             access_token=access_token,
             candidate=updated,
+            action=action_name,
         )
-        return {"status": "processed", "action": action_name}
 
     @staticmethod
     def _split_candidate_structured_line(line: str, *, expected_parts: int) -> list[str]:
@@ -727,12 +799,12 @@ class CandidateProfileSubmitHandlersMixin:
             telegram_user_id=actor.id
         )
         if access_token is None:
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            return await self._clear_candidate_submit_state_and_send_message(
+                telegram_user_id=actor.id,
                 chat_id=chat_id,
                 text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                action="session_expired",
             )
-            return {"status": "processed", "action": "session_expired"}
 
         try:
             candidate = await self._run_candidate_gateway_call(
@@ -749,17 +821,19 @@ class CandidateProfileSubmitHandlersMixin:
                 extra={"telegram_user_id": actor.id, "contact_key": contact_key},
                 exc_info=exc,
             )
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._handle_candidate_gateway_error(chat_id=chat_id, exc=exc)
-            return {"status": "processed", "action": "candidate_gateway_error"}
+            return await self._clear_candidate_submit_state_and_handle_gateway_error(
+                telegram_user_id=actor.id,
+                chat_id=chat_id,
+                exc=exc,
+            )
 
         if candidate is None:
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            return await self._clear_candidate_submit_state_and_send_message(
+                telegram_user_id=actor.id,
                 chat_id=chat_id,
                 text="Профиль кандидата не найден. Нажми /start, чтобы начать заново.",
+                action="candidate_not_found",
             )
-            return {"status": "processed", "action": "candidate_not_found"}
 
         existing_contacts = dict(candidate.contacts or {})
 
@@ -819,15 +893,17 @@ class CandidateProfileSubmitHandlersMixin:
                 },
                 exc_info=exc,
             )
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._handle_candidate_gateway_error(chat_id=chat_id, exc=exc)
-            return {"status": "processed", "action": "candidate_gateway_error"}
+            return await self._clear_candidate_submit_state_and_handle_gateway_error(
+                telegram_user_id=actor.id,
+                chat_id=chat_id,
+                exc=exc,
+            )
 
-        await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-        await self._render_candidate_dashboard_after_submit(
+        return await self._finish_candidate_submit_success(
+            telegram_user_id=actor.id,
             actor=actor,
             chat_id=chat_id,
             access_token=access_token,
             candidate=updated,
+            action=f"candidate_edit_contact_{contact_key}_saved",
         )
-        return {"status": "processed", "action": f"candidate_edit_contact_{contact_key}_saved"}

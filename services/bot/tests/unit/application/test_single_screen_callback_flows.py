@@ -95,6 +95,11 @@ class BootstrapSut(CommonUtilsMixin, BootstrapRegistrationHandlersMixin):
         return {"role_for": telegram_user_id}
 
 
+class DummyStateView:
+    def __init__(self, *, role_context: str | None = None) -> None:
+        self.role_context = role_context
+
+
 def make_callback(action: str) -> TelegramCallbackQuery:
     return TelegramCallbackQuery.model_validate(
         {
@@ -173,6 +178,29 @@ async def test_switch_role_from_menu_renders_role_selection_in_place() -> None:
     )
 
     assert result["action"] == "switch_role_from_menu"
+    assert sut._conversation_state_service.cleared_for == [100]
+    assert "Выбери роль" in sut.render_calls[-1]["text"]
+    assert sut.render_calls[-1]["reply_markup"] == {"role_for": 100}
+
+
+@pytest.mark.asyncio
+async def test_stateful_input_cancel_renders_role_selection_in_place() -> None:
+    sut = BootstrapSut()
+    sut._conversation_state_service.get_state = (
+        lambda *, telegram_user_id: DummyStateView(role_context=ROLE_EMPLOYER)
+    )
+
+    async def _get_state(*, telegram_user_id: int):
+        return DummyStateView(role_context=ROLE_EMPLOYER)
+
+    sut._conversation_state_service.get_state = _get_state
+
+    result = await sut._handle_stateful_input_cancel(
+        callback=make_callback("stateful_input_cancel"),
+        actor=make_actor(),
+    )
+
+    assert result["action"] == "stateful_input_cancel_employer"
     assert sut._conversation_state_service.cleared_for == [100]
     assert "Выбери роль" in sut.render_calls[-1]["text"]
     assert sut.render_calls[-1]["reply_markup"] == {"role_for": 100}

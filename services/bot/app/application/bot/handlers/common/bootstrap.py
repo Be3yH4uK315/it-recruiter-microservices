@@ -19,18 +19,155 @@ logger = get_logger(__name__)
 
 
 class BootstrapRegistrationHandlersMixin:
+    async def _send_bootstrap_message(
+        self,
+        *,
+        chat_id: int,
+        text: str,
+        parse_mode: str | None = None,
+        reply_markup: dict | None = None,
+    ) -> None:
+        await self._telegram_client.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
+
+    async def _send_bootstrap_registration_prompt(
+        self,
+        *,
+        telegram_user_id: int,
+        role_context: str,
+        state_key: str,
+        payload: dict | None,
+        chat_id: int,
+        text: str,
+        parse_mode: str | None = None,
+    ) -> None:
+        await self._conversation_state_service.set_state(
+            telegram_user_id=telegram_user_id,
+            role_context=role_context,
+            state_key=state_key,
+            payload=payload,
+        )
+        await self._send_bootstrap_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=parse_mode,
+            reply_markup=await self._build_stateful_cancel_markup(telegram_user_id),
+        )
+
+    async def _clear_bootstrap_state_and_send_message(
+        self,
+        *,
+        telegram_user_id: int,
+        chat_id: int,
+        text: str,
+    ) -> dict:
+        await self._conversation_state_service.clear_state(telegram_user_id=telegram_user_id)
+        await self._send_bootstrap_message(chat_id=chat_id, text=text)
+        return {"status": "processed", "action": "session_or_profile_error"}
+
+    async def _send_candidate_bootstrap_dashboard(
+        self,
+        *,
+        actor: TelegramUser,
+        chat_id: int,
+        access_token: str,
+        candidate,
+        intro_note: str | None = None,
+    ) -> None:
+        stats = await self._safe_get_candidate_statistics(
+            access_token=access_token,
+            candidate_id=candidate.id,
+        )
+        recovery_note = await self._recover_pending_uploads_for_role(
+            telegram_user_id=actor.id,
+            role=ROLE_CANDIDATE,
+            chat_id=chat_id,
+        )
+        dashboard_text = self._build_candidate_dashboard_message(
+            first_name=actor.first_name,
+            candidate=candidate,
+            statistics=stats,
+            created_now=False,
+        )
+        if intro_note:
+            dashboard_text = f"{intro_note}\n\n{dashboard_text}"
+        if recovery_note:
+            dashboard_text = f"{dashboard_text}\n\n{recovery_note}"
+        await self._send_bootstrap_message(
+            chat_id=chat_id,
+            text=dashboard_text,
+            parse_mode="Markdown",
+            reply_markup=await self._build_candidate_dashboard_markup(actor.id),
+        )
+
+    async def _send_employer_bootstrap_dashboard(
+        self,
+        *,
+        actor: TelegramUser,
+        chat_id: int,
+        access_token: str,
+        employer,
+        intro_note: str | None = None,
+    ) -> None:
+        stats = await self._safe_get_employer_statistics(
+            access_token=access_token,
+            employer_id=employer.id,
+        )
+        recovery_note = await self._recover_pending_uploads_for_role(
+            telegram_user_id=actor.id,
+            role=ROLE_EMPLOYER,
+            chat_id=chat_id,
+        )
+        dashboard_text = self._build_employer_dashboard_message(
+            first_name=actor.first_name,
+            employer=employer,
+            statistics=stats,
+            created_now=False,
+        )
+        if intro_note:
+            dashboard_text = f"{intro_note}\n\n{dashboard_text}"
+        if recovery_note:
+            dashboard_text = f"{dashboard_text}\n\n{recovery_note}"
+        await self._send_bootstrap_message(
+            chat_id=chat_id,
+            text=dashboard_text,
+            parse_mode="Markdown",
+            reply_markup=await self._build_employer_dashboard_markup(actor.id),
+        )
+
+    async def _render_role_selection_callback_screen(
+        self,
+        *,
+        callback: TelegramCallbackQuery,
+        actor: TelegramUser,
+    ) -> None:
+        await self._render_callback_screen(
+            callback=callback,
+            actor=actor,
+            text=(
+                f"👋 Привет, {actor.first_name or 'пользователь'}.\n\n"
+                "Выбери роль, в которой хочешь продолжить работу:"
+            ),
+            reply_markup=await self._build_role_selection_markup(telegram_user_id=actor.id),
+        )
+
     async def _bootstrap_role(
         self,
         *,
         actor: TelegramUser,
         chat_id: int,
         role: str,
+        intro_note: str | None = None,
     ) -> None:
         access_token = await self._auth_session_service.get_valid_access_token(
             telegram_user_id=actor.id
         )
         if access_token is None:
-            await self._telegram_client.send_message(
+            await self._send_bootstrap_message(
                 chat_id=chat_id,
                 text="Не удалось получить активную сессию. Нажми /start, чтобы начать заново.",
             )
@@ -56,49 +193,30 @@ class BootstrapRegistrationHandlersMixin:
                 return
 
             if candidate is None:
-                await self._conversation_state_service.set_state(
+                prompt_text = (
+                    "Профиль кандидата не найден.\n\n"
+                    "Давай создадим минимальный профиль.\n"
+                    "Сначала введи отображаемое имя."
+                )
+                if intro_note:
+                    prompt_text = f"{intro_note}\n\n{prompt_text}"
+                await self._send_bootstrap_registration_prompt(
                     telegram_user_id=actor.id,
                     role_context=ROLE_CANDIDATE,
                     state_key=STATE_CANDIDATE_REG_DISPLAY_NAME,
                     payload=None,
-                )
-                await self._telegram_client.send_message(
                     chat_id=chat_id,
-                    text=(
-                        "Профиль кандидата не найден.\n\n"
-                        "Давай создадим минимальный профиль.\n"
-                        "Сначала введи отображаемое имя."
-                    ),
-                    reply_markup=await self._build_stateful_cancel_markup(actor.id),
+                    text=prompt_text,
+                    parse_mode=None,
                 )
                 return
 
-            stats = await self._safe_get_candidate_statistics(
+            await self._send_candidate_bootstrap_dashboard(
+                actor=actor,
+                chat_id=chat_id,
                 access_token=access_token,
-                candidate_id=candidate.id,
-            )
-            recovery_note = await self._recover_pending_uploads_for_role(
-                telegram_user_id=actor.id,
-                role=ROLE_CANDIDATE,
-                chat_id=chat_id,
-            )
-            await self._telegram_client.send_message(
-                chat_id=chat_id,
-                text=(
-                    self._build_candidate_dashboard_message(
-                        first_name=actor.first_name,
-                        candidate=candidate,
-                        statistics=stats,
-                        created_now=False,
-                    )
-                    + (
-                        f"\n\n{recovery_note}"
-                        if recovery_note
-                        else ""
-                    )
-                ),
-                parse_mode="Markdown",
-                reply_markup=await self._build_candidate_dashboard_markup(actor.id),
+                candidate=candidate,
+                intro_note=intro_note,
             )
             return
 
@@ -122,54 +240,34 @@ class BootstrapRegistrationHandlersMixin:
                 return
 
             if employer is None:
-                await self._conversation_state_service.set_state(
+                prompt_text = (
+                    "Профиль работодателя не найден.\n\n"
+                    "Введи название компании.\n"
+                    "Если пока не хочешь указывать компанию, отправь `-`."
+                )
+                if intro_note:
+                    prompt_text = f"{intro_note}\n\n{prompt_text}"
+                await self._send_bootstrap_registration_prompt(
                     telegram_user_id=actor.id,
                     role_context=ROLE_EMPLOYER,
                     state_key=STATE_EMPLOYER_REG_COMPANY,
                     payload=None,
-                )
-                await self._telegram_client.send_message(
                     chat_id=chat_id,
-                    text=(
-                        "Профиль работодателя не найден.\n\n"
-                        "Введи название компании.\n"
-                        "Если пока не хочешь указывать компанию, отправь `-`."
-                    ),
+                    text=prompt_text,
                     parse_mode="Markdown",
-                    reply_markup=await self._build_stateful_cancel_markup(actor.id),
                 )
                 return
 
-            stats = await self._safe_get_employer_statistics(
+            await self._send_employer_bootstrap_dashboard(
+                actor=actor,
+                chat_id=chat_id,
                 access_token=access_token,
-                employer_id=employer.id,
-            )
-            recovery_note = await self._recover_pending_uploads_for_role(
-                telegram_user_id=actor.id,
-                role=ROLE_EMPLOYER,
-                chat_id=chat_id,
-            )
-            await self._telegram_client.send_message(
-                chat_id=chat_id,
-                text=(
-                    self._build_employer_dashboard_message(
-                        first_name=actor.first_name,
-                        employer=employer,
-                        statistics=stats,
-                        created_now=False,
-                    )
-                    + (
-                        f"\n\n{recovery_note}"
-                        if recovery_note
-                        else ""
-                    )
-                ),
-                parse_mode="Markdown",
-                reply_markup=await self._build_employer_dashboard_markup(actor.id),
+                employer=employer,
+                intro_note=intro_note,
             )
             return
 
-        await self._telegram_client.send_message(
+        await self._send_bootstrap_message(
             chat_id=chat_id,
             text="Неизвестная роль. Нажми /start, чтобы начать заново.",
         )
@@ -186,15 +284,7 @@ class BootstrapRegistrationHandlersMixin:
             text="Переключение роли",
             show_alert=False,
         )
-        await self._render_callback_screen(
-            callback=callback,
-            actor=actor,
-            text=(
-                f"👋 Привет, {actor.first_name or 'пользователь'}.\n\n"
-                "Выбери роль, в которой хочешь продолжить работу:"
-            ),
-            reply_markup=await self._build_role_selection_markup(telegram_user_id=actor.id),
-        )
+        await self._render_role_selection_callback_screen(callback=callback, actor=actor)
         return {"status": "processed", "action": "switch_role_from_menu"}
 
     async def _handle_candidate_registration_continue(
@@ -317,10 +407,7 @@ class BootstrapRegistrationHandlersMixin:
             text="Сценарий отменён",
             show_alert=False,
         )
-        await self._send_role_selection(
-            chat_id=self._resolve_chat_id(callback, actor),
-            actor=actor,
-        )
+        await self._render_role_selection_callback_screen(callback=callback, actor=actor)
         if state is not None and state.role_context == ROLE_EMPLOYER:
             return {"status": "processed", "action": "stateful_input_cancel_employer"}
         return {"status": "processed", "action": "stateful_input_cancel_candidate"}
@@ -336,8 +423,8 @@ class BootstrapRegistrationHandlersMixin:
             telegram_user_id=actor.id
         )
         if access_token is None:
-            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            await self._clear_bootstrap_state_and_send_message(
+                telegram_user_id=actor.id,
                 chat_id=chat_id,
                 text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
             )
@@ -353,8 +440,8 @@ class BootstrapRegistrationHandlersMixin:
                 ),
             )
             if employer is None:
-                await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-                await self._telegram_client.send_message(
+                await self._clear_bootstrap_state_and_send_message(
+                    telegram_user_id=actor.id,
                     chat_id=chat_id,
                     text="Профиль работодателя не найден. Нажми /start, чтобы начать заново.",
                 )
@@ -400,19 +487,12 @@ class BootstrapRegistrationHandlersMixin:
             return {"status": "processed", "action": "employer_gateway_error"}
 
         await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-        stats = await self._safe_get_employer_statistics(
-            access_token=access_token,
-            employer_id=updated.id,
-        )
-        await self._telegram_client.send_message(
+        await self._render_employer_dashboard_completion_screen(
+            actor=actor,
             chat_id=chat_id,
-            text=self._build_employer_dashboard_message(
-                first_name=actor.first_name,
-                employer=updated,
-                statistics=stats,
-                created_now=False,
-            ),
-            parse_mode="Markdown",
+            access_token=access_token,
+            employer=updated,
+            created_now=False,
             reply_markup=await self._build_employer_dashboard_markup(actor.id),
         )
         return {"status": "processed", "action": "employer_registered_extended"}

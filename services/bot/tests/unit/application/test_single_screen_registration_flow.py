@@ -49,8 +49,39 @@ class DummyAuthSessionService:
 
 
 class DummyCandidateGateway:
+    def __init__(self) -> None:
+        self.profile = SimpleNamespace(id="candidate-id", contacts={"telegram": "@user"})
+
     async def create_candidate(self, **kwargs):
-        return SimpleNamespace(id="candidate-id", headline_role=kwargs["headline_role"])
+        self.profile = SimpleNamespace(
+            id="candidate-id",
+            headline_role=kwargs["headline_role"],
+            contacts={"telegram": kwargs["telegram_contact"]},
+        )
+        return self.profile
+
+    async def get_profile_by_telegram(self, **kwargs):
+        return self.profile
+
+    async def update_candidate_profile(self, **kwargs):
+        contacts = kwargs.get("contacts")
+        self.profile = SimpleNamespace(
+            id="candidate-id",
+            contacts=contacts,
+            location=kwargs.get("location"),
+            work_modes=kwargs.get("work_modes"),
+            about_me=kwargs.get("about_me"),
+            contacts_visibility=kwargs.get("contacts_visibility"),
+            salary_min=kwargs.get("salary_min"),
+            salary_max=kwargs.get("salary_max"),
+            currency=kwargs.get("currency"),
+            english_level=kwargs.get("english_level"),
+            skills=kwargs.get("skills"),
+            education=kwargs.get("education"),
+            experiences=kwargs.get("experiences"),
+            projects=kwargs.get("projects"),
+        )
+        return self.profile
 
 
 class DummyEmployerGateway:
@@ -79,6 +110,9 @@ class CandidateRegistrationSut(CommonUtilsMixin, StatefulMessageHandlersMixin):
 
     def _build_candidate_dashboard_message(self, **_kwargs) -> str:
         return "CANDIDATE DASHBOARD"
+
+    async def _build_candidate_dashboard_markup(self, telegram_user_id: int):
+        return {"dashboard_for": telegram_user_id}
 
     async def _build_candidate_registration_continue_markup(self, telegram_user_id: int):
         return {"continue_for": telegram_user_id}
@@ -169,3 +203,36 @@ async def test_employer_minimal_registration_renders_single_completion_screen() 
     assert "EMPLOYER DASHBOARD" in sent["text"]
     assert "Базовая регистрация завершена." in sent["text"]
     assert sent["reply_markup"] == {"continue_for": 100}
+
+
+@pytest.mark.asyncio
+async def test_candidate_full_registration_renders_single_completion_screen() -> None:
+    sut = CandidateRegistrationSut()
+
+    result = await sut._complete_candidate_full_registration(
+        actor=make_actor(),
+        chat_id=100,
+        payload={
+            "location": "Berlin",
+            "work_modes": ["remote"],
+            "about_me": "About",
+            "contacts_visibility": "public",
+            "salary_min": 100,
+            "salary_max": 200,
+            "currency": "EUR",
+            "contact_email": "user@example.com",
+            "contact_phone": "+123",
+            "english_level": "B2",
+            "skills": [{"skill": "Python", "kind": "hard", "level": 5}],
+            "education": [],
+            "experiences": [],
+            "projects": [],
+        },
+    )
+
+    assert result["action"] == "candidate_registered_extended"
+    assert sut._conversation_state_service.cleared_for == [100]
+    assert len(sut._telegram_client.sent_messages) == 1
+    sent = sut._telegram_client.sent_messages[0]
+    assert sent["text"] == "CANDIDATE DASHBOARD"
+    assert sent["reply_markup"] == {"dashboard_for": 100}

@@ -31,6 +31,28 @@ ReturnT = TypeVar("ReturnT")
 
 
 class GatewayUtilsMixin:
+    async def _send_gateway_feedback(
+        self,
+        *,
+        chat_id: int,
+        text: str,
+        reply_markup: dict | None = None,
+        as_attachment: bool = False,
+    ) -> None:
+        if as_attachment and hasattr(self._telegram_client, "send_attachment_message"):
+            await self._telegram_client.send_attachment_message(
+                chat_id=chat_id,
+                text=text,
+                reply_markup=reply_markup,
+            )
+            return
+
+        await self._telegram_client.send_message(
+            chat_id=chat_id,
+            text=text,
+            reply_markup=reply_markup,
+        )
+
     async def _run_candidate_gateway_call(
         self,
         *,
@@ -139,59 +161,68 @@ class GatewayUtilsMixin:
         chat_id: int,
         exc: Exception,
         fallback_text: str = "Сервис кандидатов временно недоступен. Попробуй позже.",
+        as_attachment: bool = False,
     ) -> None:
         if isinstance(exc, CandidateGatewayUnauthorizedError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                as_attachment=as_attachment,
             )
             return
 
         if isinstance(exc, CandidateGatewayForbiddenError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Недостаточно прав для этого действия.",
+                as_attachment=as_attachment,
             )
             return
 
         if isinstance(exc, CandidateGatewayConflictError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Данные кандидата изменились. Обнови меню и попробуй снова.",
+                as_attachment=as_attachment,
             )
             return
 
         if isinstance(exc, CandidateGatewayValidationError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Проверь введённые данные кандидата и попробуй ещё раз.",
+                as_attachment=as_attachment,
             )
             return
 
         if isinstance(exc, CandidateGatewayRateLimitedError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Слишком много запросов к сервису кандидатов. Подожди немного и повтори.",
+                as_attachment=as_attachment,
             )
             return
 
         if isinstance(exc, CandidateGatewayUnavailableError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Сервис кандидатов временно недоступен. Попробуй позже.",
+                as_attachment=as_attachment,
             )
             return
 
         if isinstance(exc, CandidateGatewayProtocolError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Сервис кандидатов вернул некорректный ответ. Попробуй позже.",
+                as_attachment=as_attachment,
             )
             return
 
-        await self._telegram_client.send_message(
+        await self._send_gateway_feedback(
             chat_id=chat_id,
             text=fallback_text,
+            as_attachment=as_attachment,
         )
 
     async def _handle_employer_gateway_error(
@@ -200,66 +231,76 @@ class GatewayUtilsMixin:
         chat_id: int,
         exc: Exception,
         fallback_text: str = "Сервис работодателей временно недоступен. Попробуй позже.",
+        as_attachment: bool = False,
     ) -> None:
         if isinstance(exc, EmployerGatewayUnauthorizedError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+                as_attachment=as_attachment,
             )
             return
 
         if isinstance(exc, EmployerGatewayForbiddenError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Недостаточно прав для этого действия.",
+                as_attachment=as_attachment,
             )
             return
 
         if isinstance(exc, EmployerGatewayConflictError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Данные поиска или профиля изменились. Обнови меню и попробуй снова.",
+                as_attachment=as_attachment,
             )
             return
 
         if isinstance(exc, EmployerGatewayValidationError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Проверь параметры запроса: часть полей не прошла валидацию.",
+                as_attachment=as_attachment,
             )
             return
 
         if isinstance(exc, EmployerGatewayRateLimitedError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Слишком много запросов к сервису работодателей. Подожди немного и повтори.",
+                as_attachment=as_attachment,
             )
             return
 
         if isinstance(exc, EmployerGatewayNotFoundError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Запрос или сущность не найдены.",
+                as_attachment=as_attachment,
             )
             return
 
         if isinstance(exc, EmployerGatewayUnavailableError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Сервис работодателей временно недоступен. Попробуй позже.",
+                as_attachment=as_attachment,
             )
             return
 
         if isinstance(exc, EmployerGatewayProtocolError):
-            await self._telegram_client.send_message(
+            await self._send_gateway_feedback(
                 chat_id=chat_id,
                 text="Сервис работодателей вернул некорректный ответ. Попробуй позже.",
+                as_attachment=as_attachment,
             )
             return
 
-        await self._telegram_client.send_message(
+        await self._send_gateway_feedback(
             chat_id=chat_id,
             text=fallback_text,
+            as_attachment=as_attachment,
         )
 
     async def _answer_callback_and_handle_gateway_error(
@@ -296,10 +337,18 @@ class GatewayUtilsMixin:
         chat_id = self._resolve_chat_id(callback, actor)
 
         if gateway_type == "candidate":
-            await self._handle_candidate_gateway_error(chat_id=chat_id, exc=exc)
+            await self._handle_candidate_gateway_error(
+                chat_id=chat_id,
+                exc=exc,
+                as_attachment=True,
+            )
             return
 
-        await self._handle_employer_gateway_error(chat_id=chat_id, exc=exc)
+        await self._handle_employer_gateway_error(
+            chat_id=chat_id,
+            exc=exc,
+            as_attachment=True,
+        )
 
     async def _send_retry_action_if_temporarily_unavailable(
         self,
@@ -328,7 +377,7 @@ class GatewayUtilsMixin:
             action_type=retry_action,
             payload=retry_payload,
         )
-        await self._telegram_client.send_message(
+        await self._send_gateway_feedback(
             chat_id=chat_id,
             text="Можно попробовать ещё раз прямо сейчас.",
             reply_markup={
@@ -336,6 +385,7 @@ class GatewayUtilsMixin:
                     [{"text": "🔁 Повторить попытку", "callback_data": retry_token}]
                 ]
             },
+            as_attachment=True,
         )
         self._log_flow_event(
             "retry_action_suggested",

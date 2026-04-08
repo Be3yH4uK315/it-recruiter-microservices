@@ -36,10 +36,14 @@ class FakeRateLimitService:
 class FakeTelegramClient:
     def __init__(self) -> None:
         self.sent_messages: list[dict] = []
+        self.attachment_messages: list[dict] = []
         self.answered_callbacks: list[dict] = []
 
     async def send_message(self, **kwargs) -> None:
         self.sent_messages.append(kwargs)
+
+    async def send_attachment_message(self, **kwargs) -> None:
+        self.attachment_messages.append(kwargs)
 
     async def answer_callback_query(self, **kwargs) -> None:
         self.answered_callbacks.append(kwargs)
@@ -80,9 +84,13 @@ class FakeConversationStateService:
 class FakeAuthSessionService:
     def __init__(self) -> None:
         self.logout_calls: list[int] = []
+        self.active_role: str | None = None
 
     async def logout(self, *, telegram_user_id: int) -> None:
         self.logout_calls.append(telegram_user_id)
+
+    async def get_active_role(self, *, telegram_user_id: int) -> str | None:
+        return self.active_role
 
 
 class FakeEntrypoint(CommonUtilsMixin, EntrypointHandlersMixin):
@@ -92,6 +100,7 @@ class FakeEntrypoint(CommonUtilsMixin, EntrypointHandlersMixin):
         self._conversation_state_service = FakeConversationStateService()
         self._auth_session_service = FakeAuthSessionService()
         self.dispatched_calls: list[tuple[str, dict]] = []
+        self.bootstrap_calls: list[dict] = []
         self.force_draft_conflict = False
 
     def _log_flow_event(self, *_args, **_kwargs) -> None:
@@ -103,11 +112,16 @@ class FakeEntrypoint(CommonUtilsMixin, EntrypointHandlersMixin):
     async def _build_start_resume_draft_markup(self, *, telegram_user_id: int):
         return {"user": telegram_user_id}
 
-    async def _send_role_selection(self, *, chat_id: int, actor) -> None:
-        self.dispatched_calls.append(("_send_role_selection", {"chat_id": chat_id, "actor": actor}))
+    async def _send_role_selection(self, *, chat_id: int, actor, intro_note: str | None = None) -> None:
+        self.dispatched_calls.append(
+            ("_send_role_selection", {"chat_id": chat_id, "actor": actor, "intro_note": intro_note})
+        )
 
     async def _render_callback_screen(self, **kwargs) -> None:
         self.dispatched_calls.append(("_render_callback_screen", kwargs))
+
+    async def _bootstrap_role(self, **kwargs) -> None:
+        self.bootstrap_calls.append(kwargs)
 
     async def _build_stateful_cancel_markup(self, telegram_user_id: int):
         return {"cancel_for": telegram_user_id}
@@ -178,7 +192,10 @@ async def test_handle_message_rate_limited() -> None:
     result = await sut._handle_message(make_message(text="hello"))
 
     assert result == {"status": "processed", "action": "message_rate_limited"}
-    assert len(sut._telegram_client.sent_messages) == 1
+    assert sut._telegram_client.sent_messages == []
+    assert sut._telegram_client.attachment_messages == [
+        {"chat_id": 100, "text": "Слишком часто. Попробуй чуть позже."}
+    ]
 
 
 @pytest.mark.asyncio
@@ -213,6 +230,10 @@ async def test_handle_message_logout() -> None:
     assert result["action"] == "logout"
     assert sut._auth_session_service.logout_calls == [100]
     assert sut._conversation_state_service.cleared_for == [100]
+    assert any(
+        call[0] == "_send_role_selection" and call[1]["intro_note"] == "Сессия завершена."
+        for call in sut.dispatched_calls
+    )
 
 
 @pytest.mark.asyncio
@@ -232,8 +253,20 @@ async def test_handle_message_help_cancel_stateful_and_fallback() -> None:
     assert result_stateful["action"] == "_handle_stateful_message"
 
     sut._conversation_state_service.current_state = None
+    sut._auth_session_service.active_role = None
     result_fallback = await sut._handle_message(make_message(text="unknown"))
     assert result_fallback["action"] == "fallback_message"
+    assert any(
+        call[0] == "_send_role_selection"
+        and "Поддерживаемые команды" in (call[1]["intro_note"] or "")
+        for call in sut.dispatched_calls
+    )
+
+    sut._auth_session_service.active_role = "candidate"
+    result_role_fallback = await sut._handle_message(make_message(text="unknown"))
+    assert result_role_fallback["action"] == "fallback_message"
+    assert sut.bootstrap_calls[-1]["role"] == "candidate"
+    assert sut.bootstrap_calls[-1]["intro_note"] == "Сообщение не распознано. Возвращаю в меню."
 
 
 @pytest.mark.asyncio

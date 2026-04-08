@@ -40,7 +40,12 @@ class EntrypointHandlersMixin:
 
         rate_limit = self._rate_limit_service.check_message(telegram_user_id=actor.id)
         if not rate_limit.allowed:
-            await self._telegram_client.send_message(
+            send_feedback = getattr(
+                self._telegram_client,
+                "send_attachment_message",
+                self._telegram_client.send_message,
+            )
+            await send_feedback(
                 chat_id=message.chat.id,
                 text="Слишком часто. Попробуй чуть позже.",
             )
@@ -70,9 +75,10 @@ class EntrypointHandlersMixin:
         if text == "/logout":
             await self._auth_session_service.logout(telegram_user_id=actor.id)
             await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-            await self._telegram_client.send_message(
+            await self._send_role_selection(
                 chat_id=message.chat.id,
-                text="Сессия завершена. Нажми /start, чтобы выбрать роль заново.",
+                actor=actor,
+                intro_note="Сессия завершена.",
             )
             return {"status": "processed", "action": "logout"}
 
@@ -90,11 +96,26 @@ class EntrypointHandlersMixin:
                 state=state,
             )
 
-        await self._telegram_client.send_message(
+        active_role = await self._auth_session_service.get_active_role(telegram_user_id=actor.id)
+        if active_role in {ROLE_CANDIDATE, ROLE_EMPLOYER}:
+            await self._bootstrap_role(
+                actor=actor,
+                chat_id=message.chat.id,
+                role=active_role,
+                intro_note="Сообщение не распознано. Возвращаю в меню.",
+            )
+            return {
+                "status": "processed",
+                "action": "fallback_message",
+                "role": active_role,
+            }
+
+        await self._send_role_selection(
             chat_id=message.chat.id,
-            text=(
+            actor=actor,
+            intro_note=(
                 "Поддерживаемые команды: /start, /logout, /cancel, /help.\n"
-                "Для работы с меню нажми /start."
+                "Выбери роль, чтобы продолжить."
             ),
         )
         return {"status": "processed", "action": "fallback_message"}
