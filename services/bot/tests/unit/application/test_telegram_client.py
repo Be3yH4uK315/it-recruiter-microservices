@@ -51,3 +51,18 @@ async def test_placeholder_token_short_circuits_answer_callback_query() -> None:
 
     assert result == {"callback_query_id": "cb-1"}
     assert http_client.calls == []
+
+
+@pytest.mark.asyncio
+async def test_placeholder_token_short_circuits_delete_message() -> None:
+    http_client = DummyAsyncClient()
+    client = TelegramApiClient(
+        client=http_client,
+        base_url="https://api.telegram.org",
+        bot_token="change-me-telegram-bot-token",
+    )
+
+    result = await client.delete_message(chat_id=123, message_id=7)
+
+    assert result == {"ok": True, "result": True}
+    assert http_client.calls == []

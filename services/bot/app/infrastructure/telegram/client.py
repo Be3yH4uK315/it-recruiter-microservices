@@ -184,6 +184,22 @@ class TelegramApiClient:
 
         return await self._post("editMessageText", payload)
 
+    async def delete_message(
+        self,
+        *,
+        chat_id: int,
+        message_id: int,
+    ) -> dict:
+        payload: dict[str, object] = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+        }
+
+        if self.uses_placeholder_token:
+            return {"ok": True, "result": True}
+
+        return await self._post("deleteMessage", payload)
+
     async def answer_callback_query(
         self,
         *,

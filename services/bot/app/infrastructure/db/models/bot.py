@@ -79,6 +79,21 @@ class ConversationStateModel(Base):
     )
 
 
+class DialogRenderStateModel(Base):
+    __tablename__ = "dialog_render_states"
+
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    primary_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attachment_message_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )
+
+
 class DraftPayloadModel(Base):
     __tablename__ = "draft_payloads"
 

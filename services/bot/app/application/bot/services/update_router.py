@@ -3,6 +3,10 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.auth.services.auth_session_service import AuthSessionService
+from app.application.bot.services.dialog_message_manager import DialogAwareTelegramClient
+from app.application.bot.services.dialog_render_state_service import (
+    DialogRenderStateService,
+)
 from app.application.bot.handlers.composite import UpdateRouterHandlers
 from app.application.bot.services.deduplication_service import DeduplicationService
 from app.application.bot.services.rate_limit_service import RateLimitService
@@ -51,7 +55,11 @@ class UpdateRouterService(UpdateRouterHandlers):
     ) -> None:
         self._session = session
         self._settings = settings
-        self._telegram_client = telegram_client
+        self._dialog_render_state_service = DialogRenderStateService(session)
+        self._telegram_client = DialogAwareTelegramClient(
+            base_client=telegram_client,
+            render_state_service=self._dialog_render_state_service,
+        )
         self._auth_session_service = auth_session_service
         self._conversation_state_service = conversation_state_service
         self._candidate_gateway = candidate_gateway
@@ -85,6 +93,7 @@ class UpdateRouterService(UpdateRouterHandlers):
             return {"status": "duplicate", "update_id": update.update_id}
 
         try:
+            telegram_client = getattr(self, "_telegram_client", None)
             if actor is not None:
                 await self._actor_repo.upsert(
                     telegram_user_id=actor.id,
@@ -96,8 +105,14 @@ class UpdateRouterService(UpdateRouterHandlers):
                 )
 
             if update.message is not None:
+                begin_message_update = getattr(telegram_client, "begin_message_update", None)
+                if callable(begin_message_update):
+                    await begin_message_update(message=update.message)
                 result = await self._handle_message(update.message)
             elif update.callback_query is not None:
+                begin_callback_update = getattr(telegram_client, "begin_callback_update", None)
+                if callable(begin_callback_update):
+                    await begin_callback_update(callback=update.callback_query)
                 result = await self._handle_callback(update.callback_query)
             else:
                 result = {
@@ -106,6 +121,9 @@ class UpdateRouterService(UpdateRouterHandlers):
                     "update_type": update_type,
                 }
 
+            finalize_update = getattr(telegram_client, "finalize_update", None)
+            if callable(finalize_update):
+                await finalize_update()
             await self._dedup.mark_processed(update_id=update.update_id)
             await self._session.commit()
             mark_update_processed(update_type, str(result.get("status", "processed")))
@@ -120,6 +138,10 @@ class UpdateRouterService(UpdateRouterHandlers):
             )
             return result
         except Exception:
+            telegram_client = getattr(self, "_telegram_client", None)
+            discard_update = getattr(telegram_client, "discard_update", None)
+            if callable(discard_update):
+                discard_update()
             await self._session.rollback()
             mark_update_processed(update_type, "failed")
             logger.exception(

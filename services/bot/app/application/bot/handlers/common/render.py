@@ -4,8 +4,6 @@ from app.application.bot.constants import WIZARD_SCREEN_MESSAGE_ID_KEY
 from app.application.common.telegram_api import TelegramApiError
 from app.schemas.telegram import TelegramCallbackQuery, TelegramUser
 
-TELEGRAM_MEDIA_CAPTION_MAX_LENGTH = 1024
-
 
 class RenderUtilsMixin:
     async def _render_callback_screen(
@@ -59,14 +57,11 @@ class RenderUtilsMixin:
             )
             return
 
-        caption_fits = len(text) <= TELEGRAM_MEDIA_CAPTION_MAX_LENGTH
         try:
             await self._telegram_client.send_photo(
                 chat_id=self._resolve_chat_id(callback, actor),
                 photo=normalized_photo_url,
-                caption=text if caption_fits else fallback_photo_caption,
-                reply_markup=reply_markup if caption_fits else None,
-                parse_mode=parse_mode if caption_fits else None,
+                caption=fallback_photo_caption,
             )
         except TelegramApiError:
             await self._render_callback_screen(
@@ -76,9 +71,6 @@ class RenderUtilsMixin:
                 reply_markup=reply_markup,
                 parse_mode=parse_mode,
             )
-            return
-
-        if caption_fits:
             return
 
         await self._render_callback_screen(

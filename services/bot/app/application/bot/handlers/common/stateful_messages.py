@@ -217,21 +217,18 @@ class StatefulMessageHandlersMixin:
 
             await self._telegram_client.send_message(
                 chat_id=chat_id,
-                text=self._build_candidate_dashboard_message(
-                    first_name=actor.first_name,
-                    candidate=candidate,
-                    statistics=stats,
-                    created_now=True,
+                text=(
+                    self._build_candidate_dashboard_message(
+                        first_name=actor.first_name,
+                        candidate=candidate,
+                        statistics=stats,
+                        created_now=True,
+                    )
+                    + "\n\n"
+                    + "Базовая регистрация завершена.\n"
+                    + "Хочешь продолжить и заполнить дополнительные поля профиля?"
                 ),
                 parse_mode="Markdown",
-                reply_markup=await self._build_candidate_dashboard_markup(actor.id),
-            )
-            await self._telegram_client.send_message(
-                chat_id=chat_id,
-                text=(
-                    "Базовая регистрация завершена.\n"
-                    "Хочешь продолжить и заполнить дополнительные поля профиля?"
-                ),
                 reply_markup=await self._build_candidate_registration_continue_markup(actor.id),
             )
             return {"status": "processed", "action": "candidate_registered_minimal"}
@@ -861,21 +858,18 @@ class StatefulMessageHandlersMixin:
 
             await self._telegram_client.send_message(
                 chat_id=chat_id,
-                text=self._build_employer_dashboard_message(
-                    first_name=actor.first_name,
-                    employer=employer,
-                    statistics=stats,
-                    created_now=True,
+                text=(
+                    self._build_employer_dashboard_message(
+                        first_name=actor.first_name,
+                        employer=employer,
+                        statistics=stats,
+                        created_now=True,
+                    )
+                    + "\n\n"
+                    + "Базовая регистрация завершена.\n"
+                    + "Хочешь продолжить и заполнить дополнительные поля профиля?"
                 ),
                 parse_mode="Markdown",
-                reply_markup=await self._build_employer_dashboard_markup(actor.id),
-            )
-            await self._telegram_client.send_message(
-                chat_id=chat_id,
-                text=(
-                    "Базовая регистрация завершена.\n"
-                    "Хочешь продолжить и заполнить дополнительные поля профиля?"
-                ),
                 reply_markup=await self._build_employer_registration_continue_markup(actor.id),
             )
             return {"status": "processed", "action": "employer_registered_minimal"}
