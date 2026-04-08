@@ -1,0 +1,11 @@
+{
+  "name": "baseline",
+  "description": "Baseline for search latency with ML/reranking path enabled.",
+  "host": "http://localhost:8005",
+  "users": 8,
+  "spawn_rate": 2,
+  "run_time": "120s",
+  "stop_timeout": 15,
+  "wait_time_min_sec": 0.4,
+  "wait_time_max_sec": 1.2
+}

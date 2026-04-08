@@ -30,15 +30,22 @@ exclude = [
 select = [
     "E",
     "F",
-    "I"
+    "I",
+    "B"
 ]
 
 ignore = [
     "E501",
+    "B008"
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["services"]
+known-first-party = ["app", "loadtests"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["app", "loadtests"]
 
 [tool.ruff.format]
 quote-style = "double"

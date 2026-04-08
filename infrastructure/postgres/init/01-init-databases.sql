@@ -1,0 +1,5 @@
+CREATE DATABASE auth;
+CREATE DATABASE candidates;
+CREATE DATABASE employers;
+CREATE DATABASE files;
+CREATE DATABASE telegram_bot;

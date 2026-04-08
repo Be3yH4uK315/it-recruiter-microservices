@@ -1,0 +1,4 @@
+-r requirements.txt
+-r ../../requirements-dev-common.txt
+
+locust==2.37.10

@@ -1,84 +1,132 @@
+from __future__ import annotations
+
 from contextlib import asynccontextmanager
 
-import structlog
-from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.exceptions import RequestValidationError
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
-from slowapi.util import get_remote_address
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql import text
 
-from app.api.v1.api import api_router
-from app.core.config import settings
-from app.core.db import get_db
-from app.core.exceptions import global_exception_handler
-from app.core.idempotency import IdempotencyMiddleware
-from app.core.logger import setup_logging
-from app.core.middleware import RequestIDMiddleware
-from app.core.resources import resources
-from app.core.telemetry import setup_telemetry
-from app.services.publisher import publisher
-
-setup_logging()
-logger = structlog.get_logger()
-limiter = Limiter(key_func=get_remote_address, default_limits=[settings.RATE_LIMIT_DEFAULT])
+from app.api.http.v1.api import api_router
+from app.config import get_settings
+from app.infrastructure.db.session import SessionFactory, engine
+from app.infrastructure.integrations.circuit_breaker import (
+    employer_gateway_circuit_breaker,
+    file_gateway_circuit_breaker,
+)
+from app.infrastructure.integrations.http_client import build_default_async_http_client
+from app.infrastructure.observability.logger import configure_logging, get_logger
+from app.infrastructure.observability.telemetry import (
+    init_telemetry,
+    instrument_app_requests,
+    shutdown_telemetry,
+)
+from app.infrastructure.web.exception_handlers import register_exception_handlers
+from app.infrastructure.web.middleware.idempotency import IdempotencyMiddleware
+from app.infrastructure.web.middleware.request_id import RequestIdMiddleware
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Candidate Service startup...")
-    await resources.startup()
-    await publisher.connect()
-    yield
-    logger.info("Candidate Service shutdown...")
-    await publisher.close()
-    await resources.shutdown()
+    settings = get_settings()
+    configure_logging(settings)
 
+    logger = get_logger(__name__)
+    telemetry = init_telemetry(
+        service_name=settings.app_name,
+        service_version=settings.app_version,
+        environment=settings.app_env,
+    )
 
-app = FastAPI(title="Candidate Service", lifespan=lifespan)
+    employer_gateway_circuit_breaker.configure(
+        failure_threshold=settings.employer_circuit_breaker_failure_threshold,
+        recovery_timeout_seconds=settings.employer_circuit_breaker_recovery_timeout_seconds,
+    )
+    file_gateway_circuit_breaker.configure(
+        failure_threshold=settings.file_circuit_breaker_failure_threshold,
+        recovery_timeout_seconds=settings.file_circuit_breaker_recovery_timeout_seconds,
+    )
 
-app.add_middleware(SlowAPIMiddleware)
-app.add_middleware(IdempotencyMiddleware)
-app.add_middleware(RequestIDMiddleware)
+    http_client = build_default_async_http_client(settings)
 
-app.state.limiter = limiter
+    app.state.http_client = http_client
+    app.state.settings = settings
+    app.state.telemetry = telemetry
 
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_exception_handler(Exception, global_exception_handler)
-app.add_exception_handler(HTTPException, global_exception_handler)
-app.add_exception_handler(RequestValidationError, global_exception_handler)
-
-setup_telemetry(app, "candidate_service")
-Instrumentator().instrument(app).expose(app)
-
-app.include_router(api_router, prefix="/v1")
-
-
-@app.get("/health", tags=["Health"])
-async def health_check(db: AsyncSession = Depends(get_db)):
-    """
-    Liveness probe.
-    """
-    health_status = {"status": "ok", "components": {}}
-    has_error = False
+    logger.info(
+        "application startup",
+        extra={
+            "app_name": settings.app_name,
+            "app_version": settings.app_version,
+            "environment": settings.app_env,
+        },
+    )
 
     try:
-        await db.execute(text("SELECT 1"))
-        health_status["components"]["db"] = "up"
-    except Exception as e:
-        health_status["components"]["db"] = f"down: {str(e)}"
-        has_error = True
+        yield
+    finally:
+        logger.info("application shutdown")
+        shutdown_telemetry(telemetry)
+        await http_client.aclose()
+        await engine.dispose()
 
-    if publisher.connection and not publisher.connection.is_closed:
-        health_status["components"]["rabbitmq"] = "up"
-    else:
-        health_status["components"]["rabbitmq"] = "down"
-        has_error = True
 
-    if has_error:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=health_status)
+def create_app() -> FastAPI:
+    settings = get_settings()
 
-    return health_status
+    app = FastAPI(
+        title=settings.app_name,
+        version=settings.app_version,
+        debug=settings.debug,
+        lifespan=lifespan,
+        docs_url=settings.docs_url if settings.swagger_enabled else None,
+        redoc_url=settings.redoc_url if settings.swagger_enabled else None,
+        openapi_url=settings.openapi_url if settings.swagger_enabled else None,
+    )
+
+    instrument_app_requests(app, service_name=settings.app_name)
+
+    app.add_middleware(RequestIdMiddleware, settings=settings)
+
+    if settings.idempotency_enabled:
+        app.add_middleware(
+            IdempotencyMiddleware,
+            session_factory=SessionFactory,
+            header_name=settings.idempotency_header_name,
+        )
+
+    if settings.cors_allow_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_allow_origins,
+            allow_credentials=settings.cors_allow_credentials,
+            allow_methods=settings.cors_allow_methods,
+            allow_headers=settings.cors_allow_headers,
+        )
+
+    app.include_router(api_router)
+    register_exception_handlers(app)
+
+    if settings.metrics_enabled:
+        Instrumentator(
+            should_group_status_codes=True,
+            should_ignore_untemplated=True,
+            should_respect_env_var=False,
+            should_instrument_requests_inprogress=True,
+            excluded_handlers=[
+                "/metrics",
+                "/api/v1/health",
+                "/docs",
+                "/redoc",
+                "/openapi.json",
+            ],
+        ).instrument(app).expose(
+            app,
+            endpoint="/metrics",
+            include_in_schema=False,
+            should_gzip=True,
+        )
+
+    return app
+
+
+app = create_app()

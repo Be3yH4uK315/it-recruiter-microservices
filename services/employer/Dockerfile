@@ -9,7 +9,7 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl netcat-openbsd \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+    && groupadd -r appuser && useradd -r -g appuser -d /app -s /usr/sbin/nologin appuser
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \

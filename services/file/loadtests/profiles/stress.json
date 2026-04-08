@@ -1,0 +1,11 @@
+{
+  "name": "stress",
+  "description": "File-service stress for upload/download-url generation under burst.",
+  "host": "http://localhost:8004",
+  "users": 50,
+  "spawn_rate": 8,
+  "run_time": "180s",
+  "stop_timeout": 15,
+  "wait_time_min_sec": 0.05,
+  "wait_time_max_sec": 0.2
+}

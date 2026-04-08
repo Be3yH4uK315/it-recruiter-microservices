@@ -1,0 +1,30 @@
+from __future__ import annotations
+
+import httpx
+
+from app.config import Settings
+
+
+def build_default_async_http_client(settings: Settings) -> httpx.AsyncClient:
+    limits = httpx.Limits(
+        max_connections=settings.http_client_max_connections,
+        max_keepalive_connections=settings.http_client_max_keepalive_connections,
+        keepalive_expiry=settings.http_client_keepalive_expiry_seconds,
+    )
+
+    timeout = httpx.Timeout(
+        connect=settings.http_client_connect_timeout_seconds,
+        read=settings.http_client_read_timeout_seconds,
+        write=settings.http_client_write_timeout_seconds,
+        pool=settings.http_client_pool_timeout_seconds,
+    )
+
+    return httpx.AsyncClient(
+        timeout=timeout,
+        limits=limits,
+        follow_redirects=False,
+        headers={
+            "User-Agent": f"{settings.app_name}/{settings.app_version}",
+            "Accept": "application/json",
+        },
+    )

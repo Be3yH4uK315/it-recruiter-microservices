@@ -1,0 +1,232 @@
+from __future__ import annotations
+
+from app.application.common.gateway_errors import EmployerGatewayError
+from app.application.observability.logging import get_logger
+from app.schemas.telegram import TelegramUser
+
+logger = get_logger(__name__)
+
+
+class EmployerProfileSubmitHandlersMixin:
+    async def _handle_employer_edit_company_submit(
+        self,
+        *,
+        actor: TelegramUser,
+        chat_id: int,
+        company: str | None,
+    ) -> dict:
+        access_token = await self._auth_session_service.get_valid_access_token(
+            telegram_user_id=actor.id
+        )
+        if access_token is None:
+            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
+            await self._telegram_client.send_message(
+                chat_id=chat_id,
+                text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+            )
+            return {"status": "processed", "action": "session_expired"}
+
+        normalized_company = company.strip() if isinstance(company, str) else company
+        if isinstance(normalized_company, str) and not normalized_company:
+            await self._telegram_client.send_message(
+                chat_id=chat_id,
+                text=(
+                    "Пустое значение сохранить нельзя. "
+                    "Введи название компании или отправь `-`, чтобы очистить поле."
+                ),
+                parse_mode="Markdown",
+            )
+            return {"status": "processed", "action": "employer_edit_company_empty"}
+        normalized_company, error_text = self._normalize_profile_name_value(
+            raw_value=normalized_company if isinstance(normalized_company, str) else None,
+            field_label="Название компании",
+        )
+        if error_text is not None:
+            await self._telegram_client.send_message(
+                chat_id=chat_id,
+                text=error_text,
+            )
+            return {"status": "processed", "action": "employer_edit_company_invalid"}
+
+        try:
+            employer = await self._run_employer_gateway_call(
+                telegram_user_id=actor.id,
+                access_token=access_token,
+                operation=lambda token: self._employer_gateway.get_by_telegram(
+                    access_token=token,
+                    telegram_id=actor.id,
+                ),
+            )
+            if employer is None:
+                await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
+                await self._telegram_client.send_message(
+                    chat_id=chat_id,
+                    text="Профиль работодателя не найден. Нажми /start, чтобы начать заново.",
+                )
+                return {"status": "processed", "action": "employer_not_found"}
+
+            idempotency_key = self._build_idempotency_key(
+                telegram_user_id=actor.id,
+                operation="employer.profile.update",
+                resource_id=employer.id,
+            )
+            updated = await self._run_employer_gateway_call(
+                telegram_user_id=actor.id,
+                access_token=access_token,
+                operation=lambda token: self._employer_gateway.update_employer(
+                    access_token=token,
+                    employer_id=employer.id,
+                    company=normalized_company,
+                    idempotency_key=idempotency_key,
+                ),
+            )
+        except EmployerGatewayError as exc:
+            logger.warning(
+                "employer edit company failed",
+                extra={"telegram_user_id": actor.id},
+                exc_info=exc,
+            )
+            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
+            await self._handle_employer_gateway_error(chat_id=chat_id, exc=exc)
+            return {"status": "processed", "action": "employer_gateway_error"}
+
+        await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
+
+        stats = await self._safe_get_employer_statistics(
+            access_token=access_token,
+            employer_id=updated.id,
+        )
+        await self._telegram_client.send_message(
+            chat_id=chat_id,
+            text=self._build_employer_dashboard_message(
+                first_name=actor.first_name,
+                employer=updated,
+                statistics=stats,
+                created_now=False,
+            ),
+            parse_mode="Markdown",
+            reply_markup=await self._build_employer_dashboard_markup(actor.id),
+        )
+        return {"status": "processed", "action": "employer_edit_company_saved"}
+
+    async def _handle_employer_contact_submit(
+        self,
+        *,
+        actor: TelegramUser,
+        chat_id: int,
+        contact_key: str,
+        raw_value: str | None,
+    ) -> dict:
+        access_token = await self._auth_session_service.get_valid_access_token(
+            telegram_user_id=actor.id
+        )
+        if access_token is None:
+            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
+            await self._telegram_client.send_message(
+                chat_id=chat_id,
+                text="Сессия устарела. Нажми /start, чтобы выбрать роль заново.",
+            )
+            return {"status": "processed", "action": "session_expired"}
+
+        if contact_key not in {"telegram", "email", "phone", "website"}:
+            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
+            await self._telegram_client.send_message(
+                chat_id=chat_id,
+                text="Неизвестное поле контакта. Нажми /start, чтобы открыть меню заново.",
+            )
+            return {"status": "processed", "action": "employer_contact_invalid_key"}
+
+        try:
+            employer = await self._run_employer_gateway_call(
+                telegram_user_id=actor.id,
+                access_token=access_token,
+                operation=lambda token: self._employer_gateway.get_by_telegram(
+                    access_token=token,
+                    telegram_id=actor.id,
+                ),
+            )
+            if employer is None:
+                await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
+                await self._telegram_client.send_message(
+                    chat_id=chat_id,
+                    text="Профиль работодателя не найден. Нажми /start, чтобы начать заново.",
+                )
+                return {"status": "processed", "action": "employer_not_found"}
+        except EmployerGatewayError as exc:
+            logger.warning(
+                "employer contact edit load failed",
+                extra={"telegram_user_id": actor.id, "contact_key": contact_key},
+                exc_info=exc,
+            )
+            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
+            await self._handle_employer_gateway_error(chat_id=chat_id, exc=exc)
+            return {"status": "processed", "action": "employer_gateway_error"}
+
+        existing_contacts = dict(employer.contacts or {})
+        if raw_value is None:
+            existing_contacts[contact_key] = None
+        else:
+            normalized, error_text = self._normalize_contact_value(
+                contact_key=contact_key,
+                raw_value=raw_value,
+            )
+            if error_text is not None:
+                await self._telegram_client.send_message(
+                    chat_id=chat_id,
+                    text=error_text,
+                    parse_mode="Markdown",
+                )
+                return {"status": "processed", "action": "employer_contact_invalid"}
+            existing_contacts[contact_key] = normalized
+
+        has_any_contact = any(
+            isinstance(value, str) and value.strip() for value in existing_contacts.values()
+        )
+        contacts_payload: dict[str, str | None] | None = (
+            existing_contacts if has_any_contact else None
+        )
+
+        try:
+            idempotency_key = self._build_idempotency_key(
+                telegram_user_id=actor.id,
+                operation=f"employer.contact.update.{contact_key}",
+                resource_id=employer.id,
+            )
+            updated = await self._run_employer_gateway_call(
+                telegram_user_id=actor.id,
+                access_token=access_token,
+                operation=lambda token: self._employer_gateway.update_employer(
+                    access_token=token,
+                    employer_id=employer.id,
+                    contacts=contacts_payload,
+                    idempotency_key=idempotency_key,
+                ),
+            )
+        except EmployerGatewayError as exc:
+            logger.warning(
+                "employer contact edit update failed",
+                extra={"telegram_user_id": actor.id, "contact_key": contact_key},
+                exc_info=exc,
+            )
+            await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
+            await self._handle_employer_gateway_error(chat_id=chat_id, exc=exc)
+            return {"status": "processed", "action": "employer_gateway_error"}
+
+        await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
+
+        stats = await self._safe_get_employer_statistics(
+            access_token=access_token,
+            employer_id=updated.id,
+        )
+        await self._telegram_client.send_message(
+            chat_id=chat_id,
+            text=self._build_employer_dashboard_message(
+                first_name=actor.first_name,
+                employer=updated,
+                statistics=stats,
+                created_now=False,
+            ),
+            parse_mode="Markdown",
+            reply_markup=await self._build_employer_dashboard_markup(actor.id),
+        )
+        return {"status": "processed", "action": f"employer_edit_contact_{contact_key}_saved"}

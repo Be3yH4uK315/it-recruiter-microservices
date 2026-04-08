@@ -1,0 +1,50 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+
+  - package-ecosystem: "pip"
+    directory: "/services/auth"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:15"
+
+  - package-ecosystem: "pip"
+    directory: "/services/bot"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:20"
+
+  - package-ecosystem: "pip"
+    directory: "/services/candidate"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:25"
+
+  - package-ecosystem: "pip"
+    directory: "/services/employer"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:30"
+
+  - package-ecosystem: "pip"
+    directory: "/services/file"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:35"
+
+  - package-ecosystem: "pip"
+    directory: "/services/search"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:40"

@@ -1,0 +1,5 @@
+-r requirements.txt
+-r ../../requirements-dev-common.txt
+
+asgi-lifespan==2.1.0
+locust==2.37.10

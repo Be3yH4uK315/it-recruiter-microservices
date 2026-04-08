@@ -1,0 +1,11 @@
+{
+  "name": "baseline",
+  "description": "Baseline candidate API and internal search-document latency.",
+  "host": "http://localhost:8002",
+  "users": 16,
+  "spawn_rate": 3,
+  "run_time": "120s",
+  "stop_timeout": 10,
+  "wait_time_min_sec": 0.2,
+  "wait_time_max_sec": 0.7
+}

@@ -1,13 +1,26 @@
 global:
-  scrape_interval: 5s
+  scrape_interval: 15s
+  evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: 'microservices'
-    metrics_path: '/metrics'
+  - job_name: "microservices"
+    metrics_path: /metrics
     static_configs:
-      - targets: 
-        - 'auth-service:8000'
-        - 'candidate-api:8000'
-        - 'employer-service:8000'
-        - 'search-service:8000'
-        - 'file-service:8000'
+      - targets: ["auth-api:8000"]
+        labels:
+          app_name: "auth"
+      - targets: ["candidate-api:8000"]
+        labels:
+          app_name: "candidate"
+      - targets: ["employer-api:8000"]
+        labels:
+          app_name: "employer"
+      - targets: ["file-api:8000"]
+        labels:
+          app_name: "file"
+      - targets: ["search-api:8000"]
+        labels:
+          app_name: "search"
+      - targets: ["bot-api:8000"]
+        labels:
+          app_name: "bot"

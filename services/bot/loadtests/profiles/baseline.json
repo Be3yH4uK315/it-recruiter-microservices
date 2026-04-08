@@ -1,0 +1,11 @@
+{
+  "name": "baseline",
+  "description": "Baseline for bot webhook and internal state lookup latency.",
+  "host": "http://localhost:8010",
+  "users": 15,
+  "spawn_rate": 3,
+  "run_time": "120s",
+  "stop_timeout": 10,
+  "wait_time_min_sec": 0.2,
+  "wait_time_max_sec": 0.5
+}

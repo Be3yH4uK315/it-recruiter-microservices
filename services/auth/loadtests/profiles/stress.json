@@ -1,0 +1,11 @@
+{
+  "name": "stress",
+  "description": "Auth saturation and conflict-path detection.",
+  "host": "http://localhost:8001",
+  "users": 60,
+  "spawn_rate": 10,
+  "run_time": "180s",
+  "stop_timeout": 15,
+  "wait_time_min_sec": 0.05,
+  "wait_time_max_sec": 0.2
+}

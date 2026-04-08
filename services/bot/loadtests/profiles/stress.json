@@ -1,0 +1,11 @@
+{
+  "name": "stress",
+  "description": "Bot burst handling under repeated webhook and state reads.",
+  "host": "http://localhost:8010",
+  "users": 40,
+  "spawn_rate": 8,
+  "run_time": "180s",
+  "stop_timeout": 15,
+  "wait_time_min_sec": 0.05,
+  "wait_time_max_sec": 0.2
+}

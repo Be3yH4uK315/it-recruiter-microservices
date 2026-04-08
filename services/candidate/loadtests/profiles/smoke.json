@@ -1,0 +1,11 @@
+{
+  "name": "smoke",
+  "description": "Quick validation of candidate read paths and internal contracts.",
+  "host": "http://localhost:8002",
+  "users": 2,
+  "spawn_rate": 1,
+  "run_time": "30s",
+  "stop_timeout": 5,
+  "wait_time_min_sec": 0.2,
+  "wait_time_max_sec": 0.8
+}

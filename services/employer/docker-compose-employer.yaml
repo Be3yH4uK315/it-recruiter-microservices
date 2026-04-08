@@ -1,0 +1,72 @@
+version: "3.9"
+
+services:
+  employer-db:
+    image: postgres:16
+    container_name: employer-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: employer_service
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - employer_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d employer_service"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  employer-rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: employer-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5674:5672"
+      - "15674:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  employer-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: employer_api
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      - .:/app
+    depends_on:
+      employer-db:
+        condition: service_healthy
+      employer-rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8002:8000"
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+
+  employer-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: employer-worker
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      employer-db:
+        condition: service_healthy
+      employer-rabbitmq:
+        condition: service_healthy
+    command: >
+      python -m app.worker
+
+volumes:
+  employer_pg_data:

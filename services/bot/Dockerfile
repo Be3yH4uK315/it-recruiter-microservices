@@ -19,4 +19,4 @@ COPY --chown=appuser:appuser . .
 
 USER appuser
     
-CMD ["python", "app/bot.py"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8010"]

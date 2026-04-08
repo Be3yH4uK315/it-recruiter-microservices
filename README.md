@@ -1,457 +1,174 @@
 # IT Recruiter Platform
 
-Полнофункциональная платформа подбора IT кандидатов на основе гибридного поиска (Elasticsearch + Milvus), Telegram бота и микросервисной архитектуры с гарантией доставки событий.
+Монорепозиторий платформы подбора IT-кандидатов: Telegram-бот, микросервисы на FastAPI, гибридный поиск (Elasticsearch + Milvus), событийная интеграция через RabbitMQ.
 
 ## Обзор
 
-IT Recruiter - масштабируемая SaaS платформа для подбора IT специалистов:
+Система состоит из 6 сервисов:
+- `auth`: аутентификация, JWT, internal auth.
+- `candidate`: профиль кандидата, выдача данных в поиск.
+- `employer`: профиль работодателя, сессии поиска, контактные сценарии.
+- `file`: загрузка/выдача файлов через S3/MinIO.
+- `search`: гибридный поиск, RRF, переранжирование.
+- `bot`: Telegram webhook API и оркестрация пользовательских сценариев.
 
-**Для кандидатов**: Telegram бот с FSM для создания профилей (опыт, навыки, проекты, файлы)
-
-**Для работодателей**: Поиск кандидатов через:
-
-- Гибридный поиск (Elasticsearch BM25 + Milvus semantic search)
-- RRF (Reciprocal Rank Fusion) для объединения результатов
-- L2 переранжирование с Cross-Encoder + multiplicative scoring
-
-**Для системы**: Надежная микросервисная архитектура с:
-
-- Outbox pattern для гарантии доставки событий
-- Circuit Breaker для защиты от каскадных отказов
-- Идемпотентность для безопасных повторов
-- Структурированное логирование и трейсинг
+Ключевые инженерные паттерны:
+- outbox worker для событий.
+- idempotency middleware для безопасных повторов.
+- circuit breaker на межсервисных вызовах.
+- structured logging + OpenTelemetry + Prometheus.
 
 ## Архитектура
 
-```
-┌────────────────────────────────────────┐
-│    Telegram Bot (aiogram 3.5)          │
-│ Кандидаты и Работодатели (Двурольный)  │
-└────────────────┬───────────────────────┘
-                 │
-┌────────────────┴──────────────────────┐
-│      API Gateway (Nginx reverse)      │
-│       Маршрутизация + SSL/TLS         │
-└────┬──────┬──────────┬──────────┬─────┘
-     │      │          │          │
-     ▼      ▼          ▼          ▼
-┌────────────────────────────────────┐
-│  6 Микросервисов (FastAPI 0.118.0) │
-├──────────┬──────────┬──────────────┤
-│   Auth   │Candidate │  Employer    │
-│          │          │              │
-│  Search  │   Bot    │    File      │
-└──────┬───┴──────────┴─────────┬────┘
-       │                        │
-    ┌──┴──────────┬─────────────┴──┐
-    │             │                │
-    ▼             ▼                ▼
-┌──────────┐ ┌────────────┐  ┌──────────┐
-│PostgreSQL│ │  RabbitMQ  │  │ Milvus   │
-│   (15)   │ │  (Events)  │  │(Vectors) │
-└──────────┘ └────────────┘  └──────────┘
-    │
-    ▼
-┌──────────────────┐
-│ Elasticsearch    │
-│  (Lexical idx)   │
-└──────────────────┘
-    │
-    ▼
-┌──────────────────┐
-│ Redis (FSM)      │
-│ S3/MinIO(Files)  │
-└──────────────────┘
-```
+Инфраструктура в `docker-compose.yaml`:
+- `postgres` (единый инстанс, отдельные БД под сервисы).
+- `rabbitmq`.
+- `search-elasticsearch`, `search-milvus` (+ `search-etcd`, `search-minio`).
+- `file-minio`.
+- `nginx` как API gateway.
+- `prometheus`, `grafana`, `jaeger`.
+- `ngrok` для внешнего webhook (опционально).
 
-## Микросервисы
+Важно: Redis в текущем `docker-compose.yaml` не используется.
 
-### 🔍 Search Service - Гибридный поиск (основной)
+## Порты И Эндпоинты
 
-**Главная инновация**: Параллельный поиск в Elasticsearch (лексический) и Milvus (семантический) с RRF объединением и L2 переранжированием через Cross-Encoder.
+Внешние порты API:
+- `80` -> Nginx gateway.
+- `8001` -> `auth-api`.
+- `8002` -> `candidate-api`.
+- `8003` -> `employer-api`.
+- `8004` -> `file-api`.
+- `8005` -> `search-api`.
+- `8010` -> `bot-api`.
 
-Архитектура поиска (4 этапа):
+Health-check:
+- Gateway: `GET http://localhost/health`
+- Сервисы: `GET http://localhost:<port>/api/v1/health`
 
-1. **Параллельный гибридный поиск**: ES (BM25) + Milvus (768-dim embeddings)
-2. **RRF (Reciprocal Rank Fusion)**: нормализует scores и объединяет результаты
-3. **Top-K selection**: отбор RERANK_TOP_K кандидатов для переранжирования
-4. **L2 Multiplicative Scoring**: Cross-Encoder + факторы (навыки, опыт, локация, зарплата, английский)
+Маршрутизация через Nginx (`infrastructure/nginx/conf.d/default.conf`):
+- `/api/v1/auth/` -> `auth-api`
+- `/api/v1/candidates/` -> `candidate-api`
+- `/api/v1/employers/` -> `employer-api`
+- `/api/v1/files/` -> `file-api`
+- `/api/v1/search/` -> `search-api`
+- `/api/v1/telegram/` -> `bot-api`
+- `/files/` -> `file-minio`
 
-**Multiplicative Score**: `ML_Score × SkillFactor × ExpFactor × LocFactor × SalFactor × EngFactor`
-
-[Подробная документация](./services/search/README.md)
-
-### 👤 Candidate Service - Управление профилями
-
-**CRUD кандидатов** с иерархическими данными (опыт, навыки, проекты, образование).
-
-**Ключевые паттерны**:
-
-- **Outbox Pattern**: background worker публикует события в RabbitMQ с гарантией доставки (batch 50/2sec, max retries 5, DLQ)
-- **IdempotencyMiddleware**: защита от дублирования через Idempotency-Key
-- **Circuit Breaker**: graceful degradation при недоступности Employer Service
-- **Контроль доступа**: видимость контактов (public/on-request/hidden) с запросами разрешения
-- **File Management**: интеграция с File Service (presigned URLs)
-
-[Подробная документация](./services/candidate/README.md)
-
-### 📱 Bot Service - Telegram интерфейс
-
-**Двурольный FSM-based бот** для кандидатов и работодателей.
-
-**Кандидаты FSM**: 8 состояний для регистрации и редактирования
-
-- Ввод базовой информации (имя, роль, локация)
-- Блочный ввод (опыт, навыки, проекты, образование)
-- Загрузка резюме и аватара
-- FSMTimeoutMiddleware: очистка state после 30 минут неактивности
-
-**Работодатели FSM**: 3 состояния для поиска
-
-- Ввод фильтров поиска (роль, навыки, опыт, локация, зарплата)
-- Просмотр результатов (аватар + полная информация)
-- Принятие решений (лайк/контакт запрос)
-
-[Подробная документация](./services/bot/README.md)
-
-### 🔐 Auth Service - JWT токены
-
-**Двусторонняя аутентификация**:
-
-- Bot Auth: доверенный источник (INTERNAL_BOT_SECRET)
-- Telegram Auth: HMAC-SHA256 верификация
-
-**JWT Pair**:
-
-- Access Token: 60 минут (sub/tg_id/role)
-- Refresh Token: 7 дней (ротация с удалением старого)
-
-[Подробная документация](./services/auth/README.md)
-
-### 💼 Employer Service - Поиск и контакты
-
-**Профили работодателей** с сессиями поиска.
-
-**Контакт запросы workflow**:
-
-1. Public: контакты видны сразу
-2. On-request: employer отправляет запрос → candidate одобряет
-3. Hidden: контакты никогда не видны
-
-**Internal endpoint**: `/internal/access-check` для проверки разрешений (используется Candidate Service через Circuit Breaker)
-
-[Подробная документация](./services/employer/README.md)
-
-### 📁 File Service - Управление файлами
-
-**S3/MinIO интеграция** для резюме и аватаров.
-
-Ключевые функции:
-
-- **Magic Bytes валидация**: проверка реального типа файла
-- **Presigned URLs**: временные ссылки (TTL 1 час) для скачивания
-- **Метаданные**: size_bytes, content_type, owner_telegram_id
-- **Domain rewriting**: поддержка CDN через S3_PUBLIC_DOMAIN
-- **Контроль доступа**: только владелец может удалить
-
-[Подробная документация](./services/file/README.md)
-
-## Технологический стек
-
-### Backend & Framework
-
-- **FastAPI 0.118.0** с Uvicorn + UVLoop (асинхронный I/O)
-- **Python 3.12**, Pydantic 2.11+ для валидации
-- **SQLAlchemy 2.0.43** ORM (PostgreSQL)
-
-### Databases & Storage
-
-- **PostgreSQL 15**: основная БД (async: asyncpg)
-- **Elasticsearch 8.11**: лексический поиск с BM25 scoring
-- **Milvus**: векторный поиск (768-dim embeddings)
-- **Redis**: FSM state + token caching
-- **S3/MinIO**: объектное хранилище файлов
-
-### ML & Search
-
-- **Sentence Transformers** `paraphrase-multilingual-mpnet-base-v2`: 768-dim embeddings
-- **Cross-Encoder** `ms-marco-MiniLM-L-6-v2`: L2 переранжирование
-
-### Message & Events
-
-- **RabbitMQ 3.12** с aio-pika 9.5.7 (TOPIC exchange)
-- **Outbox pattern**: гарантия доставки (batch worker, DLQ)
-
-### Bot & Integration
-
-- **aiogram 3.5.0**: Telegram bot framework
-- **httpx**: async HTTP client с tenacity retry
-- **python-jose + cryptography**: JWT + HMAC-SHA256
-
-### Resilience & Monitoring
-
-- **Circuit Breaker**: 2 states (CLOSED/OPEN), failure threshold
-- **Tenacity**: exponential backoff retry logic
-- **slowapi**: rate limiting (per-IP)
-- **Prometheus + OpenTelemetry**: metrics + tracing
-- **Structlog**: JSON structured logging
-
-## Быстрый старт
-
-### Docker Compose
+## Быстрый Старт
 
 ```bash
 git clone <repo>
 cd it_recruiter_monorepo
 cp .env.example .env
 
-# Запустить все сервисы
-docker-compose up -d
+# Сервисные настройки храним в services/*/.env (gitignored):
+cp services/auth/.env.example services/auth/.env
+cp services/bot/.env.example services/bot/.env
+cp services/candidate/.env.example services/candidate/.env
+cp services/employer/.env.example services/employer/.env
+cp services/file/.env.example services/file/.env
+cp services/search/.env.example services/search/.env
 
-# Проверить здоровье
-curl http://localhost:8000/health  # API Gateway
-curl http://telegram-bot:8081/health  # Bot Service
+docker compose up -d --build
 ```
 
-### Конфигурация
-
-Главные переменные окружения (`.env`):
+Проверка:
 
 ```bash
-# Databases
-DATABASE_URL="postgresql+asyncpg://user:pass@postgres/itrecruiter"
-REDIS_HOST="redis"
-REDIS_PORT=6379
-
-# Elasticsearch & Milvus
-ELASTICSEARCH_URL="http://elasticsearch:9200"
-MILVUS_HOST="milvus"
-MILVUS_PORT=19530
-
-# File Service (S3)
-S3_ENDPOINT="http://minio:9000"
-S3_ACCESS_KEY="minioadmin"
-S3_SECRET_KEY="minioadmin"
-S3_BUCKET="candidate-files"
-S3_PUBLIC_DOMAIN="https://cdn.example.com"  # Optional CDN
-
-# RabbitMQ
-RABBITMQ_HOST="rabbitmq"
-RABBITMQ_USER="guest"
-RABBITMQ_PASS="guest"
-
-# Telegram Bot
-TELEGRAM_BOT_TOKEN="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-INTERNAL_BOT_SECRET="your-secret-key"
-
-# JWT
-SECRET_KEY="your-secret-key-for-jwt"
-ALGORITHM="HS256"
-
-# Logging
-LOG_LEVEL="INFO"
-ENVIRONMENT="production"
+curl http://localhost/health
+curl http://localhost:8001/api/v1/health
+curl http://localhost:8002/api/v1/health
+curl http://localhost:8003/api/v1/health
+curl http://localhost:8004/api/v1/health
+curl http://localhost:8005/api/v1/health
+curl http://localhost:8010/api/v1/health
 ```
 
-### API Gateway routing
+## Конфигурация
 
-Nginx маршрутизирует на основе пути:
+- Корневой `.env` используется для compose-level переменных (сейчас: `NGROK_AUTHTOKEN`).
+- `services/*/.env` — единственный источник конфигурации сервиса и для локального запуска, и для Docker Compose.
+- `services/*/.env.example` — шаблон для заполнения.
+- Корневой `.env` остаётся только для compose-level переменных, например `NGROK_AUTHTOKEN`.
 
-```nginx
-/v1/auth/*          → Auth Service (8010)
-/v1/candidates/*    → Candidate Service (8020)
-/v1/employers/*     → Employer Service (8030)
-/v1/search/*        → Search Service (8040)
-/v1/files/*         → File Service (8050)
-/telegram/*         → Bot Service (8081)
-```
-
-## End-to-End сценарии
-
-### Сценарий 1: Кандидат создает профиль
-
-```
-1. /start в Telegram →  Bot Service
-2. Выбирает роль "candidate" →  Starts CandidateFSM
-3. Вводит данные (опыт, навыки, проекты) →  Многошаговый FSM
-4. Загружает резюме →  File Service (presigned URL)
-5. Creates candidate →  Candidate Service
-6. Event published →  RabbitMQ (candidate.created)
-7. Search Service consumer →  Индексирует в ES + Milvus
-8. Готов к поиску работодателями ✅
-```
-
-### Сценарий 2: Работодатель ищет кандидата
-
-```
-1. /search в Telegram →  Bot Service
-2. Вводит фильтры (роль, навыки, опыт, локация, зарплата)
-3. Нажимает "Show next" →  Employer Service
-4. Call /search/next →  Search Service (гибридный поиск)
-   - ES (BM25) ↔ Milvus (embeddings)
-   - RRF merge
-   - Cross-Encoder L2 reranking
-   - Multiplicative scoring
-5. Returns best candidate →  с match_score и объяснением
-6. Employer принимает решение (like/contact) →  Decision saved
-7. Contact request if needed →  Candidate gets notified ✅
-```
-
-### Сценарий 3: Контакт запрос (On-Request контакты)
-
-```
-1. Employer хочет контакт кандидата (hidden/on-request)
-2. Отправляет ContactRequest →  Employer Service
-3. Candidate Service слушает через Circuit Breaker
-   - Проверяет visibility (public/on-request/hidden)
-   - Создает ContactsRequest в БД
-4. Candidate получает уведомление в Telegram
-5. Одобряет/отклоняет
-6. Employer получает контакт или отказ ✅
-```
-
-## Observability
-
-### Prometheus Метрики
-
-Доступны на каждом сервисе (port :9090 обычно):
-
-```
-# Search Service специфичные
-search_requests_total{status="success"}
-search_latency_seconds{quantile="0.99"}
-rrf_combined_scores{status="ok"}
-
-# Общие для всех
-http_requests_total{method="POST",endpoint="/v1/..."}
-http_request_duration_seconds{quantile="0.95"}
-db_pool_size{service="candidate"}
-```
-
-### OpenTelemetry Трейсинг
-
-Настроен через OTLP exporter на port 4318 (default):
-
-```
-- Каждый /next запрос в Search Service → trace
-  ├─ ES query span
-  ├─ Milvus search span
-  ├─ RRF computation span
-  ├─ mget ES span
-  └─ Cross-Encoder reranking span
-```
-
-### Structlog JSON логирование
-
-Все компоненты пишут структурированные JSON логи:
-
-```json
-{
-  "timestamp": "2026-03-09T12:31:45.123Z",
-  "level": "INFO",
-  "event": "candidate_indexed",
-  "candidate_id": "550e8400-...",
-  "es_indexed": true,
-  "milvus_indexed": true,
-  "service": "search",
-  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
-}
-```
+Рекомендации:
+- не хранить реальные токены в git;
+- для локальной разработки использовать безопасные тестовые значения;
+- для прода — секрет-хранилище и ротация ключей.
 
 ## Тестирование
 
-### Unit тесты
+Unit-тесты по всем сервисам:
 
 ```bash
-# Все сервисы
-cd services/search && pytest tests/unit/ -v --cov=app
-cd services/candidate && pytest tests/unit/ -v --cov=app
-cd services/bot && pytest tests/unit/ -v --cov=app
+for s in auth bot candidate employer file search; do
+  (cd services/$s && .venv/bin/pytest tests/unit -q)
+done
 ```
 
-### E2E тесты
+Интеграционные тесты (по умолчанию отключены в `conftest.py`, включаются через `RUN_INTEGRATION=1`):
 
 ```bash
-# Полный цикл поиска
-pytest tests/e2e/test_full_search_flow.py -v
+for s in auth candidate employer file search; do
+  (cd services/$s && RUN_INTEGRATION=1 .venv/bin/pytest tests/integration -q)
+done
 ```
 
-### Load тесты
+E2E сценарий поиска:
 
 ```bash
-# Locust для стресс тестирования
-locust -f services/search/tests/locustfile.py \
-  --host=http://localhost:8000 \
-  --users=500 --spawn-rate=50 --run-time=10m
+cd services/search
+RUN_INTEGRATION=1 .venv/bin/pytest tests/integration/e2e/test_search_pipeline.py -q
 ```
 
-Целевые метрики:
+## Нагрузочное Тестирование
 
-- Throughput: >2000 rps
-- P99 latency: <500ms
-- Success rate: >99.5%
+Запуск теперь делается из папки конкретного сервиса. Примеры:
 
-## CI/CD
+```bash
+docker compose -f docker-compose.yaml -f docker-compose.loadtest.yaml up -d --build
 
-GitHub Actions workflows для каждого сервиса:
+cd services/search
+.venv/bin/python -m loadtests.run --profile baseline
 
-```yaml
-1. Unit + E2E tests (pytest)
-2. Docker build (multi-stage)
-3. Push to Docker Registry
-4. Deploy to staging (manual)
-5. Smoke tests
-6. Deploy to production (manual)
+cd services/auth
+.venv/bin/python -m loadtests.run --profile smoke
 ```
 
-## Масштабируемость
+В каждом `services/<service>/loadtests` лежат:
+- `locustfile.py`
+- `common.py`
+- `run.py`
+- `profiles/*.json`
 
-### Horizontal Scaling
+## Observability
 
-- **Search Service**: stateless, scale за счет Elasticsearch shards
-- **Candidate/Employer**: stateless, load-balanced за Nginx
-- **Bot Service**: scale за счет Redis FSM хранилища
-- **RabbitMQ Consumer**: parallel workers (одна очередь, разные воркеры)
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3000`
+- Jaeger: `http://localhost:16686`
 
-### Performance Tuning
+Метрики сервисов доступны на `/metrics` каждого API-контейнера.
 
-- **Elasticsearch**: tune JVM heap, add shards, enable compression
-- **Milvus**: increase vector search threads, add index replicas
-- **PostgreSQL**: connection pooling (pgBouncer), index optimization
-- **Redis**: persistence (AOF), cluster mode для resilience
+## CI/CD (текущее состояние)
 
-## Решение проблем
+- `CI` workflow:
+  - lint (`black`, `isort`, `flake8`),
+  - baseline type-check (`mypy`) по ключевым входным и runtime-модулям сервисов,
+  - unit/integration-like прогоны тестов по сервисам с `--cov-fail-under=50`,
+  - для `pull_request` проверки запускаются только для измененных сервисов,
+  - scheduled/manual integration job,
+  - сборка docker-образов на `push`.
+- `Security` workflow:
+  - dependency review для PR,
+  - `pip-audit` по requirements-файлам.
 
-**Проблема**: Медленный поиск (P99 > 1s)
+Пайплайнов деплоя в production/staging в текущем репозитории нет.
 
-- Профилировать: ES query latency (`_explain` API)
-- Масштабировать: Elasticsearch nodes
-- Оптимизировать: RETRIEVAL_SIZE параметр
+## План Доведения
 
-**Проблема**: Outbox события не доставляются
-
-- Проверить: RabbitMQ connection (logs)
-- DLQ inspection: посмотреть failed messages
-- Max retries: переконфигурировать OutboxWorker
-
-**Проблема**: Circuit Breaker открыт
-
-- Проверить: целевой сервис доступен
-- Manual reset: удалить state из кеша
-- Настроить: threshold, timeout parameters
-
-## Гарантии и соглашений
-
-- **Outbox Pattern**: каждое событие будет доставлено (max retries, DLQ)
-- **Idempotency**: повторно сделанный запрос не создаст дубли
-- **Circuit Breaker**: каскадные отказы не распространяются
-- **Трансакционность**: создание candidate + Outbox в одной транзакции
+Актуальный рабочий план: [docs/project_completion_plan.md](./docs/project_completion_plan.md)
 
 ## Лицензия
 
 Проприетарное ПО. Все права защищены.
-
-## Контакты
-
-Архитектор: Костерин Дмитрий  
-Документация: Обновляется регулярно

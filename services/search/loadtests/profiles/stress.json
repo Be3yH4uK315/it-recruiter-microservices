@@ -1,0 +1,11 @@
+{
+  "name": "stress",
+  "description": "Search service CPU-bound stress for hybrid retrieval and reranking.",
+  "host": "http://localhost:8005",
+  "users": 16,
+  "spawn_rate": 3,
+  "run_time": "180s",
+  "stop_timeout": 20,
+  "wait_time_min_sec": 0.2,
+  "wait_time_max_sec": 0.6
+}

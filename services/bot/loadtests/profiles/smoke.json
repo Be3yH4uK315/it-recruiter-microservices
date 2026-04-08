@@ -1,0 +1,11 @@
+{
+  "name": "smoke",
+  "description": "Quick validation of bot health, internal state and webhook auth.",
+  "host": "http://localhost:8010",
+  "users": 2,
+  "spawn_rate": 1,
+  "run_time": "30s",
+  "stop_timeout": 5,
+  "wait_time_min_sec": 0.2,
+  "wait_time_max_sec": 0.6
+}

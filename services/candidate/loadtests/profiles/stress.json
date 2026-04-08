@@ -1,0 +1,11 @@
+{
+  "name": "stress",
+  "description": "Candidate service sustained read pressure and downstream dependency stress.",
+  "host": "http://localhost:8002",
+  "users": 40,
+  "spawn_rate": 6,
+  "run_time": "180s",
+  "stop_timeout": 15,
+  "wait_time_min_sec": 0.1,
+  "wait_time_max_sec": 0.4
+}
