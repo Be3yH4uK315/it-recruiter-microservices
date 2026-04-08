@@ -369,7 +369,7 @@ class CandidateFileContactHandlersMixin:
                 action_name = "candidate_resume_downloaded"
         except TelegramApiError:
             # fallback: send clickable link when Telegram can't fetch external URL
-            await self._telegram_client.send_message(
+            await self._telegram_client.send_attachment_message(
                 chat_id=chat_id,
                 text=f"Ссылка на файл:\n{download_url}",
             )

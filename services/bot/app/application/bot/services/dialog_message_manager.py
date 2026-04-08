@@ -197,6 +197,23 @@ class DialogAwareTelegramClient:
         self._track_sent_text(payload)
         return payload
 
+    async def send_attachment_message(
+        self,
+        *,
+        chat_id: int,
+        text: str,
+        reply_markup: dict | None = None,
+        parse_mode: str | None = None,
+    ) -> dict:
+        payload = await self._base_client.send_message(
+            chat_id=chat_id,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+        )
+        self._track_sent_attachment(payload)
+        return payload
+
     async def send_photo(
         self,
         *,

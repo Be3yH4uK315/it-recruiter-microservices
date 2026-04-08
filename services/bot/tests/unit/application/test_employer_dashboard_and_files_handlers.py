@@ -28,6 +28,7 @@ class DummyTelegramClient:
     def __init__(self) -> None:
         self.answered: list[dict] = []
         self.messages: list[dict] = []
+        self.attachment_messages: list[dict] = []
         self.photos: list[dict] = []
         self.docs: list[dict] = []
         self.raise_photo = False
@@ -38,6 +39,9 @@ class DummyTelegramClient:
 
     async def send_message(self, **kwargs):
         self.messages.append(kwargs)
+
+    async def send_attachment_message(self, **kwargs):
+        self.attachment_messages.append(kwargs)
 
     async def send_photo(self, **kwargs):
         if self.raise_photo:
@@ -471,6 +475,13 @@ async def test_employer_download_and_delete_file_branches() -> None:
         callback=callback, actor=actor, target_kind="document"
     )
     assert doc_link["action"] == "employer_document_download_link_sent"
+    assert sut._telegram_client.attachment_messages == [
+        {
+            "chat_id": 100,
+            "text": "Ссылка на файл:\nhttps://example.com/doc.pdf",
+        }
+    ]
+    assert sut._telegram_client.messages == []
 
     delete_avatar = await sut._handle_employer_delete_file(
         callback=callback, actor=actor, target_kind="avatar"

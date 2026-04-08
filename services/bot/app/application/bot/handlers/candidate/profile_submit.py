@@ -12,6 +12,30 @@ logger = get_logger(__name__)
 
 
 class CandidateProfileSubmitHandlersMixin:
+    async def _render_candidate_dashboard_after_submit(
+        self,
+        *,
+        actor: TelegramUser,
+        chat_id: int,
+        access_token: str,
+        candidate,
+    ) -> None:
+        stats = await self._safe_get_candidate_statistics(
+            access_token=access_token,
+            candidate_id=candidate.id,
+        )
+        await self._telegram_client.send_message(
+            chat_id=chat_id,
+            text=self._build_candidate_dashboard_message(
+                first_name=actor.first_name,
+                candidate=candidate,
+                statistics=stats,
+                created_now=False,
+            ),
+            parse_mode="Markdown",
+            reply_markup=await self._build_candidate_dashboard_markup(actor.id),
+        )
+
     async def _handle_candidate_edit_submit(
         self,
         *,
@@ -153,22 +177,11 @@ class CandidateProfileSubmitHandlersMixin:
             return {"status": "processed", "action": "candidate_gateway_error"}
 
         await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-
-        stats = await self._safe_get_candidate_statistics(
-            access_token=access_token,
-            candidate_id=updated.id,
-        )
-
-        await self._telegram_client.send_message(
+        await self._render_candidate_dashboard_after_submit(
+            actor=actor,
             chat_id=chat_id,
-            text=self._build_candidate_dashboard_message(
-                first_name=actor.first_name,
-                candidate=updated,
-                statistics=stats,
-                created_now=False,
-            ),
-            parse_mode="Markdown",
-            reply_markup=await self._build_candidate_dashboard_markup(actor.id),
+            access_token=access_token,
+            candidate=updated,
         )
         return {"status": "processed", "action": f"candidate_edit_{field_name}_saved"}
 
@@ -277,22 +290,11 @@ class CandidateProfileSubmitHandlersMixin:
             return {"status": "processed", "action": "candidate_gateway_error"}
 
         await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-
-        stats = await self._safe_get_candidate_statistics(
-            access_token=access_token,
-            candidate_id=updated.id,
-        )
-
-        await self._telegram_client.send_message(
+        await self._render_candidate_dashboard_after_submit(
+            actor=actor,
             chat_id=chat_id,
-            text=self._build_candidate_dashboard_message(
-                first_name=actor.first_name,
-                candidate=updated,
-                statistics=stats,
-                created_now=False,
-            ),
-            parse_mode="Markdown",
-            reply_markup=await self._build_candidate_dashboard_markup(actor.id),
+            access_token=access_token,
+            candidate=updated,
         )
         return {"status": "processed", "action": "candidate_edit_salary_saved"}
 
@@ -689,20 +691,11 @@ class CandidateProfileSubmitHandlersMixin:
             return {"status": "processed", "action": "candidate_gateway_error"}
 
         await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-        stats = await self._safe_get_candidate_statistics(
-            access_token=access_token,
-            candidate_id=updated.id,
-        )
-        await self._telegram_client.send_message(
+        await self._render_candidate_dashboard_after_submit(
+            actor=actor,
             chat_id=chat_id,
-            text=self._build_candidate_dashboard_message(
-                first_name=actor.first_name,
-                candidate=updated,
-                statistics=stats,
-                created_now=False,
-            ),
-            parse_mode="Markdown",
-            reply_markup=await self._build_candidate_dashboard_markup(actor.id),
+            access_token=access_token,
+            candidate=updated,
         )
         return {"status": "processed", "action": action_name}
 
@@ -831,21 +824,10 @@ class CandidateProfileSubmitHandlersMixin:
             return {"status": "processed", "action": "candidate_gateway_error"}
 
         await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-
-        stats = await self._safe_get_candidate_statistics(
-            access_token=access_token,
-            candidate_id=updated.id,
-        )
-
-        await self._telegram_client.send_message(
+        await self._render_candidate_dashboard_after_submit(
+            actor=actor,
             chat_id=chat_id,
-            text=self._build_candidate_dashboard_message(
-                first_name=actor.first_name,
-                candidate=updated,
-                statistics=stats,
-                created_now=False,
-            ),
-            parse_mode="Markdown",
-            reply_markup=await self._build_candidate_dashboard_markup(actor.id),
+            access_token=access_token,
+            candidate=updated,
         )
         return {"status": "processed", "action": f"candidate_edit_contact_{contact_key}_saved"}

@@ -7,6 +7,7 @@ import pytest
 from app.application.bot.handlers.candidate.file_contact import CandidateFileContactHandlersMixin
 from app.application.common.contracts import CandidateProfileSummary
 from app.application.common.gateway_errors import CandidateGatewayError
+from app.application.common.telegram_api import TelegramApiError
 from app.schemas.telegram import TelegramCallbackQuery, TelegramUser
 
 
@@ -21,9 +22,31 @@ class DummyAuthService:
 class DummyTelegramClient:
     def __init__(self) -> None:
         self.answered: list[dict] = []
+        self.messages: list[dict] = []
+        self.attachment_messages: list[dict] = []
+        self.photos: list[dict] = []
+        self.documents: list[dict] = []
+        self.raise_photo = False
+        self.raise_document = False
 
     async def answer_callback_query(self, **kwargs):
         self.answered.append(kwargs)
+
+    async def send_message(self, **kwargs):
+        self.messages.append(kwargs)
+
+    async def send_attachment_message(self, **kwargs):
+        self.attachment_messages.append(kwargs)
+
+    async def send_photo(self, **kwargs):
+        if self.raise_photo:
+            raise TelegramApiError("photo failed")
+        self.photos.append(kwargs)
+
+    async def send_document(self, **kwargs):
+        if self.raise_document:
+            raise TelegramApiError("document failed")
+        self.documents.append(kwargs)
 
 
 class DummyCandidateGateway:
@@ -90,6 +113,9 @@ class DummyCandidateFiles(CandidateFileContactHandlersMixin):
     def _build_idempotency_key(self, **_kwargs) -> str:
         return "idempotency"
 
+    def _resolve_chat_id(self, callback, actor) -> int:
+        return actor.id
+
 
 def make_callback() -> TelegramCallbackQuery:
     return TelegramCallbackQuery.model_validate(
@@ -129,3 +155,35 @@ async def test_candidate_delete_file_renders_updated_screen_in_place() -> None:
     assert "Аватар удалён." in render_calls[0]["text"]
     assert "Резюме удалено." in render_calls[1]["text"]
     assert all(call["reply_markup"] == {"dashboard": 100} for call in render_calls)
+
+
+@pytest.mark.asyncio
+async def test_candidate_download_file_uses_attachment_message_for_link_fallback() -> None:
+    sut = DummyCandidateFiles()
+    callback = make_callback()
+    actor = make_actor()
+
+    avatar_result = await sut._handle_candidate_download_file(
+        callback=callback, actor=actor, target_kind="avatar"
+    )
+    assert avatar_result["action"] == "candidate_avatar_downloaded"
+    assert sut._telegram_client.photos == [
+        {
+            "chat_id": 100,
+            "photo": "https://example.com/avatar.jpg",
+            "caption": "Текущий аватар",
+        }
+    ]
+
+    sut._telegram_client.raise_document = True
+    resume_result = await sut._handle_candidate_download_file(
+        callback=callback, actor=actor, target_kind="resume"
+    )
+    assert resume_result["action"] == "candidate_resume_download_link_sent"
+    assert sut._telegram_client.attachment_messages == [
+        {
+            "chat_id": 100,
+            "text": "Ссылка на файл:\nhttps://example.com/resume.pdf",
+        }
+    ]
+    assert sut._telegram_client.messages == []

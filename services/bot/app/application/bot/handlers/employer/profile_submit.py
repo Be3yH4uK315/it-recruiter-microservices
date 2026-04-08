@@ -8,6 +8,30 @@ logger = get_logger(__name__)
 
 
 class EmployerProfileSubmitHandlersMixin:
+    async def _render_employer_dashboard_after_submit(
+        self,
+        *,
+        actor: TelegramUser,
+        chat_id: int,
+        access_token: str,
+        employer,
+    ) -> None:
+        stats = await self._safe_get_employer_statistics(
+            access_token=access_token,
+            employer_id=employer.id,
+        )
+        await self._telegram_client.send_message(
+            chat_id=chat_id,
+            text=self._build_employer_dashboard_message(
+                first_name=actor.first_name,
+                employer=employer,
+                statistics=stats,
+                created_now=False,
+            ),
+            parse_mode="Markdown",
+            reply_markup=await self._build_employer_dashboard_markup(actor.id),
+        )
+
     async def _handle_employer_edit_company_submit(
         self,
         *,
@@ -91,21 +115,11 @@ class EmployerProfileSubmitHandlersMixin:
             return {"status": "processed", "action": "employer_gateway_error"}
 
         await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-
-        stats = await self._safe_get_employer_statistics(
-            access_token=access_token,
-            employer_id=updated.id,
-        )
-        await self._telegram_client.send_message(
+        await self._render_employer_dashboard_after_submit(
+            actor=actor,
             chat_id=chat_id,
-            text=self._build_employer_dashboard_message(
-                first_name=actor.first_name,
-                employer=updated,
-                statistics=stats,
-                created_now=False,
-            ),
-            parse_mode="Markdown",
-            reply_markup=await self._build_employer_dashboard_markup(actor.id),
+            access_token=access_token,
+            employer=updated,
         )
         return {"status": "processed", "action": "employer_edit_company_saved"}
 
@@ -213,20 +227,10 @@ class EmployerProfileSubmitHandlersMixin:
             return {"status": "processed", "action": "employer_gateway_error"}
 
         await self._conversation_state_service.clear_state(telegram_user_id=actor.id)
-
-        stats = await self._safe_get_employer_statistics(
-            access_token=access_token,
-            employer_id=updated.id,
-        )
-        await self._telegram_client.send_message(
+        await self._render_employer_dashboard_after_submit(
+            actor=actor,
             chat_id=chat_id,
-            text=self._build_employer_dashboard_message(
-                first_name=actor.first_name,
-                employer=updated,
-                statistics=stats,
-                created_now=False,
-            ),
-            parse_mode="Markdown",
-            reply_markup=await self._build_employer_dashboard_markup(actor.id),
+            access_token=access_token,
+            employer=updated,
         )
         return {"status": "processed", "action": f"employer_edit_contact_{contact_key}_saved"}

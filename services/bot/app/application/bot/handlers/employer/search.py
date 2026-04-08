@@ -1613,7 +1613,7 @@ class EmployerSearchHandlersMixin:
             )
             action_name = "employer_search_resume_sent"
         except TelegramApiError:
-            await self._telegram_client.send_message(
+            await self._telegram_client.send_attachment_message(
                 chat_id=chat_id,
                 text=f"Ссылка на резюме:\n{resume_download_url}",
             )

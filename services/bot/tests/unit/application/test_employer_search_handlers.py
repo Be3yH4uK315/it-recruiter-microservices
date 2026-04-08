@@ -60,6 +60,7 @@ class DummyTelegramClient:
     def __init__(self) -> None:
         self.answered: list[dict] = []
         self.sent_messages: list[dict] = []
+        self.attachment_messages: list[dict] = []
         self.sent_docs: list[dict] = []
         self.raise_on_send_document = False
 
@@ -68,6 +69,9 @@ class DummyTelegramClient:
 
     async def send_message(self, **kwargs):
         self.sent_messages.append(kwargs)
+
+    async def send_attachment_message(self, **kwargs):
+        self.attachment_messages.append(kwargs)
 
     async def send_document(self, **kwargs):
         if self.raise_on_send_document:
@@ -632,6 +636,13 @@ async def test_resume_download_branches() -> None:
         context=ctx(resume_download_url="https://example.com/r.pdf"),
     )
     assert sent_link["action"] == "employer_search_resume_link_sent"
+    assert sut._telegram_client.attachment_messages == [
+        {
+            "chat_id": 100,
+            "text": "Ссылка на резюме:\nhttps://example.com/r.pdf",
+        }
+    ]
+    assert sut._telegram_client.sent_messages == []
 
 
 @pytest.mark.asyncio
