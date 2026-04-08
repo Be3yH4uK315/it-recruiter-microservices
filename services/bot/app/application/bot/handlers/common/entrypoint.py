@@ -423,8 +423,9 @@ class EntrypointHandlersMixin:
                 text="Загрузка аватара",
                 show_alert=False,
             )
-            await self._telegram_client.send_message(
-                chat_id=self._resolve_chat_id(callback, actor),
+            await self._render_callback_screen(
+                callback=callback,
+                actor=actor,
                 text="Отправь фото или изображение документом.",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
@@ -442,8 +443,9 @@ class EntrypointHandlersMixin:
                 text="Загрузка резюме",
                 show_alert=False,
             )
-            await self._telegram_client.send_message(
-                chat_id=self._resolve_chat_id(callback, actor),
+            await self._render_callback_screen(
+                callback=callback,
+                actor=actor,
                 text="Отправь резюме документом в формате PDF, DOC или DOCX.",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
@@ -622,8 +624,9 @@ class EntrypointHandlersMixin:
                 text="Загрузка аватара",
                 show_alert=False,
             )
-            await self._telegram_client.send_message(
-                chat_id=self._resolve_chat_id(callback, actor),
+            await self._render_callback_screen(
+                callback=callback,
+                actor=actor,
                 text="Отправь фото или изображение документом для аватара компании.",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )
@@ -641,8 +644,9 @@ class EntrypointHandlersMixin:
                 text="Загрузка документа",
                 show_alert=False,
             )
-            await self._telegram_client.send_message(
-                chat_id=self._resolve_chat_id(callback, actor),
+            await self._render_callback_screen(
+                callback=callback,
+                actor=actor,
                 text="Отправь документ компании в формате PDF, DOC или DOCX.",
                 reply_markup=await self._build_stateful_cancel_markup(actor.id),
             )

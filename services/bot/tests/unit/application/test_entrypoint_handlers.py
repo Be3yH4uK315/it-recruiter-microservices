@@ -106,6 +106,12 @@ class FakeEntrypoint(CommonUtilsMixin, EntrypointHandlersMixin):
     async def _send_role_selection(self, *, chat_id: int, actor) -> None:
         self.dispatched_calls.append(("_send_role_selection", {"chat_id": chat_id, "actor": actor}))
 
+    async def _render_callback_screen(self, **kwargs) -> None:
+        self.dispatched_calls.append(("_render_callback_screen", kwargs))
+
+    async def _build_stateful_cancel_markup(self, telegram_user_id: int):
+        return {"cancel_for": telegram_user_id}
+
     def _resolve_chat_id(self, callback: TelegramCallbackQuery, actor) -> int:
         if callback.message is not None and callback.message.chat is not None:
             return int(callback.message.chat.id)

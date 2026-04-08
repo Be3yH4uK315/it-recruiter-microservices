@@ -186,9 +186,14 @@ class BootstrapRegistrationHandlersMixin:
             text="Переключение роли",
             show_alert=False,
         )
-        await self._send_role_selection(
-            chat_id=self._resolve_chat_id(callback, actor),
+        await self._render_callback_screen(
+            callback=callback,
             actor=actor,
+            text=(
+                f"👋 Привет, {actor.first_name or 'пользователь'}.\n\n"
+                "Выбери роль, в которой хочешь продолжить работу:"
+            ),
+            reply_markup=await self._build_role_selection_markup(telegram_user_id=actor.id),
         )
         return {"status": "processed", "action": "switch_role_from_menu"}
 
@@ -213,8 +218,9 @@ class BootstrapRegistrationHandlersMixin:
                 text="Ок, можно продолжить позже",
                 show_alert=False,
             )
-            await self._telegram_client.send_message(
-                chat_id=self._resolve_chat_id(callback, actor),
+            await self._render_callback_screen(
+                callback=callback,
+                actor=actor,
                 text=(
                     "Базовую регистрацию оставили. Продолжить можно из меню профиля в любой момент."
                 ),
@@ -232,8 +238,9 @@ class BootstrapRegistrationHandlersMixin:
             text="Продолжаем регистрацию",
             show_alert=False,
         )
-        await self._telegram_client.send_message(
-            chat_id=self._resolve_chat_id(callback, actor),
+        await self._render_callback_screen(
+            callback=callback,
+            actor=actor,
             text=("Выбери форматы работы кнопками ниже.\n\n" "Текущий выбор: —"),
             reply_markup=await self._build_candidate_work_modes_selector_markup(
                 telegram_user_id=actor.id,
@@ -264,8 +271,9 @@ class BootstrapRegistrationHandlersMixin:
                 text="Ок, можно продолжить позже",
                 show_alert=False,
             )
-            await self._telegram_client.send_message(
-                chat_id=self._resolve_chat_id(callback, actor),
+            await self._render_callback_screen(
+                callback=callback,
+                actor=actor,
                 text=(
                     "Оставили базовую регистрацию. Продолжить можно из меню профиля "
                     "в любой момент."
@@ -284,8 +292,9 @@ class BootstrapRegistrationHandlersMixin:
             text="Продолжаем регистрацию",
             show_alert=False,
         )
-        await self._telegram_client.send_message(
-            chat_id=self._resolve_chat_id(callback, actor),
+        await self._render_callback_screen(
+            callback=callback,
+            actor=actor,
             text=(
                 "Telegram-контакт компании синхронизирован автоматически.\n"
                 "Введи email компании или отправь `-`, чтобы пропустить."
