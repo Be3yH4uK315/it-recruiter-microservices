@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from app.infrastructure.telegram.client import TelegramApiClient
@@ -16,6 +17,18 @@ class DummyAsyncClient:
     async def get(self, url: str, **_kwargs):
         self.calls.append(("get", url))
         raise AssertionError("network call must not happen for placeholder telegram token")
+
+
+class ResponseTextAsyncClient:
+    def __init__(self, response: httpx.Response) -> None:
+        self.response = response
+
+    async def post(self, url: str, **_kwargs):
+        request = httpx.Request("POST", url)
+        raise httpx.HTTPStatusError("telegram error", request=request, response=self.response)
+
+    async def get(self, url: str, **_kwargs):
+        raise AssertionError("unexpected get call")
 
 
 @pytest.mark.asyncio
@@ -82,3 +95,24 @@ def test_convert_markdown_to_markdown_v2_handles_escaped_legacy_chars() -> None:
     )
 
     assert converted == "Имя: Python\\_\\[Lead\\] и путь \\\\server"
+
+
+@pytest.mark.asyncio
+async def test_answer_callback_query_ignores_expired_query_error() -> None:
+    response = httpx.Response(
+        400,
+        json={
+            "ok": False,
+            "error_code": 400,
+            "description": "Bad Request: query is too old and response timeout expired or query ID is invalid",
+        },
+    )
+    client = TelegramApiClient(
+        client=ResponseTextAsyncClient(response),
+        base_url="https://api.telegram.org",
+        bot_token="123:realistic-token",
+    )
+
+    result = await client.answer_callback_query(callback_query_id="cb-1", text="ok")
+
+    assert result == {}

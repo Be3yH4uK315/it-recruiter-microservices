@@ -464,8 +464,8 @@ class ProfileEditUtilsMixin:
             return "1 запись"
         return f"{count} записей"
 
-    @staticmethod
     def _build_edit_prompt_message(
+        self,
         *,
         cabinet_prefix: str,
         prompt: str,
@@ -473,7 +473,7 @@ class ProfileEditUtilsMixin:
         parse_mode: str | None,
     ) -> str:
         if parse_mode == "Markdown":
-            return ProfileEditUtilsMixin._build_structured_prompt(
+            return self._build_structured_prompt(
                 section_path=cabinet_prefix,
                 title="Редактирование",
                 instruction=prompt,

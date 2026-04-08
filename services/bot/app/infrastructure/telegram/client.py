@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 import httpx
@@ -362,6 +363,20 @@ class TelegramApiClient:
             response_text: str | None = None
             if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
                 response_text = exc.response.text
+                if self._should_ignore_answer_callback_query_error(
+                    method=method,
+                    status_code=exc.response.status_code,
+                    response_text=response_text,
+                ):
+                    logger.info(
+                        "telegram callback query answer ignored",
+                        extra={
+                            "method": method,
+                            "status_code": exc.response.status_code,
+                            "response_text": response_text,
+                        },
+                    )
+                    return {}
             logger.warning(
                 "telegram api request failed",
                 extra={
@@ -384,3 +399,33 @@ class TelegramApiClient:
         if isinstance(result, dict):
             return result
         return {}
+
+    @staticmethod
+    def _should_ignore_answer_callback_query_error(
+        *,
+        method: str,
+        status_code: int,
+        response_text: str | None,
+    ) -> bool:
+        if method != "answerCallbackQuery" or status_code != 400 or not response_text:
+            return False
+
+        description: str | None = None
+        try:
+            parsed = json.loads(response_text)
+        except ValueError:
+            parsed = None
+
+        if isinstance(parsed, dict):
+            raw_description = parsed.get("description")
+            if raw_description is not None:
+                description = str(raw_description)
+        if description is None:
+            description = response_text
+
+        normalized = description.lower()
+        return (
+            "query is too old" in normalized
+            or "response timeout expired" in normalized
+            or "query id is invalid" in normalized
+        )

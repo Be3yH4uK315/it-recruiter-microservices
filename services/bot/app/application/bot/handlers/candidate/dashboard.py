@@ -376,6 +376,7 @@ class CandidateDashboardHandlersMixin:
             callback=callback,
             actor=actor,
             text=self._build_candidate_help_message(),
+            parse_mode="Markdown",
             reply_markup=await self._build_candidate_back_to_dashboard_markup(
                 telegram_user_id=actor.id
             ),
