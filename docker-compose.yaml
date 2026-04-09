@@ -503,7 +503,6 @@ services:
       OTEL_TRACES_SAMPLER_ARG: "0.2"
     volumes:
       - ./services/search:/app
-      - hf_cache:/app/.cache
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -538,7 +537,6 @@ services:
         required: true
     volumes:
       - ./services/search:/app
-      - hf_cache:/app/.cache
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -600,27 +598,28 @@ services:
     restart: unless-stopped
     depends_on:
       auth-api:
-        condition: service_healthy
+        condition: service_started
       candidate-api:
-        condition: service_healthy
+        condition: service_started
       employer-api:
-        condition: service_healthy
+        condition: service_started
       file-api:
-        condition: service_healthy
+        condition: service_started
       search-api:
-        condition: service_healthy
+        condition: service_started
       bot-api:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "80:80"
     volumes:
       - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/health || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 20
+      start_period: 10s
     networks:
       - backend
       - monitoring
@@ -636,7 +635,7 @@ services:
       - "4040:4040"
     depends_on:
       nginx:
-        condition: service_healthy
+        condition: service_started
     networks:
       - backend
 
@@ -712,4 +711,3 @@ volumes:
   search_milvus_data:
   prometheus_data:
   grafana_data:
-  hf_cache:

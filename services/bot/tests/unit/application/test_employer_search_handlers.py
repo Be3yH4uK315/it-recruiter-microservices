@@ -753,6 +753,8 @@ async def test_list_searches_branches() -> None:
         callback=callback, actor=actor, context=ctx(page=1)
     )
     assert ok["action"] == "employer_list_searches"
+    render_calls = [payload for name, payload in sut.calls if name == "render"]
+    assert render_calls[-1]["parse_mode"] == "Markdown"
 
 
 @pytest.mark.asyncio

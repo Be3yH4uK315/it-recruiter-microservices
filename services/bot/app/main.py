@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from contextlib import suppress
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -27,9 +29,9 @@ logger = get_logger(__name__)
 async def _resolve_ngrok_public_base_url(
     *,
     app: FastAPI,
+    http_client: httpx.AsyncClient,
 ) -> str | None:
     settings = app.state.settings
-    http_client = app.state.http_client
 
     if not settings.ngrok_api_url:
         return None
@@ -65,6 +67,11 @@ async def _resolve_ngrok_public_base_url(
                             },
                         )
                         return public_url.rstrip("/")
+        except httpx.ConnectError:
+            logger.info(
+                "ngrok api is not reachable yet, retrying",
+                extra={"ngrok_api_url": settings.ngrok_api_url},
+            )
         except Exception:
             logger.warning(
                 "failed to resolve ngrok public url, retrying",
@@ -85,11 +92,19 @@ async def _resolve_telegram_webhook_url(
     app: FastAPI,
 ) -> str | None:
     settings = app.state.settings
+    http_client = app.state.http_client
 
     if settings.telegram_webhook_url:
+        logger.info(
+            "telegram webhook url is configured explicitly",
+            extra={"telegram_webhook_url": settings.telegram_webhook_url},
+        )
         return settings.telegram_webhook_url.rstrip("/")
 
-    ngrok_base_url = await _resolve_ngrok_public_base_url(app=app)
+    ngrok_base_url = await _resolve_ngrok_public_base_url(
+        app=app,
+        http_client=http_client,
+    )
     if ngrok_base_url:
         return f"{ngrok_base_url}{settings.telegram_webhook_path}"
 
@@ -99,13 +114,13 @@ async def _resolve_telegram_webhook_url(
 async def _configure_telegram_webhook(
     *,
     app: FastAPI,
-) -> None:
+) -> bool:
     settings = app.state.settings
     http_client = app.state.http_client
 
     if not settings.telegram_bot_token:
         logger.warning("telegram bot token is not configured, webhook setup skipped")
-        return
+        return True
 
     telegram_client = TelegramApiClient(
         client=http_client,
@@ -124,19 +139,19 @@ async def _configure_telegram_webhook(
         )
     except TelegramApiError as exc:
         logger.warning("telegram getMe failed", exc_info=exc)
-        return
+        return False
 
     if settings.telegram_mode != "webhook":
         logger.info(
             "telegram webhook setup skipped because mode is not webhook",
             extra={"telegram_mode": settings.telegram_mode},
         )
-        return
+        return True
 
     webhook_url = await _resolve_telegram_webhook_url(app=app)
     if not webhook_url:
         logger.warning("telegram webhook url is not resolved, webhook setup skipped")
-        return
+        return False
 
     try:
         result = await telegram_client.set_webhook(
@@ -166,8 +181,28 @@ async def _configure_telegram_webhook(
                 "max_connections": webhook_info.get("max_connections"),
             },
         )
+        return True
     except TelegramApiError as exc:
         logger.warning("telegram webhook setup failed", exc_info=exc)
+        return False
+
+
+async def _configure_telegram_webhook_in_background(
+    *,
+    app: FastAPI,
+) -> None:
+    settings = app.state.settings
+    retry_delay = max(5.0, settings.telegram_webhook_discovery_poll_interval_seconds)
+
+    while True:
+        configured = await _configure_telegram_webhook(app=app)
+        if configured:
+            return
+        logger.info(
+            "telegram webhook setup will be retried in background",
+            extra={"retry_delay_seconds": retry_delay},
+        )
+        await asyncio.sleep(retry_delay)
 
 
 @asynccontextmanager
@@ -198,12 +233,16 @@ async def lifespan(app: FastAPI):
         },
     )
 
-    await _configure_telegram_webhook(app=app)
+    webhook_task = asyncio.create_task(_configure_telegram_webhook_in_background(app=app))
+    app.state.telegram_webhook_task = webhook_task
 
     try:
         yield
     finally:
         logger.info("application shutdown")
+        webhook_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await webhook_task
         shutdown_telemetry(telemetry)
         await http_client.aclose()
         await engine.dispose()

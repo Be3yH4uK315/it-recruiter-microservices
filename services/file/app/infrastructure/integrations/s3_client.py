@@ -40,6 +40,7 @@ class S3ObjectStorage(ObjectStorage):
             s3={"addressing_style": "path" if settings.s3_force_path_style else "auto"},
             signature_version="s3v4",
         )
+        self._common_config = common_config
 
         self._client_config = {
             "endpoint_url": settings.s3_endpoint_url,
@@ -49,18 +50,8 @@ class S3ObjectStorage(ObjectStorage):
             "config": common_config,
         }
 
-        public_endpoint = settings.s3_public_endpoint_url or settings.s3_endpoint_url
-        self._presign_client_config = {
-            "endpoint_url": public_endpoint,
-            "aws_access_key_id": settings.s3_access_key,
-            "aws_secret_access_key": settings.s3_secret_key,
-            "region_name": settings.s3_region,
-            "config": common_config,
-        }
-        self._presign_client = get_botocore_session().create_client(
-            "s3",
-            **self._presign_client_config,
-        )
+        self._presign_endpoint_url: str | None = None
+        self._presign_client = None
 
     @asynccontextmanager
     async def _get_client(self) -> AsyncIterator:
@@ -69,8 +60,28 @@ class S3ObjectStorage(ObjectStorage):
 
     @asynccontextmanager
     async def _get_presign_client(self) -> AsyncIterator:
-        async with self._session.client("s3", **self._presign_client_config) as client:
+        async with self._session.client("s3", **self._build_presign_client_config()) as client:
             yield client
+
+    def _build_presign_client_config(self) -> dict[str, object]:
+        public_endpoint = self._settings.s3_public_endpoint_url or self._settings.s3_endpoint_url
+        return {
+            "endpoint_url": public_endpoint,
+            "aws_access_key_id": self._settings.s3_access_key,
+            "aws_secret_access_key": self._settings.s3_secret_key,
+            "region_name": self._settings.s3_region,
+            "config": self._common_config,
+        }
+
+    def _get_or_create_presign_client(self):
+        public_endpoint = self._settings.s3_public_endpoint_url or self._settings.s3_endpoint_url
+        if self._presign_client is None or self._presign_endpoint_url != public_endpoint:
+            self._presign_endpoint_url = public_endpoint
+            self._presign_client = get_botocore_session().create_client(
+                "s3",
+                **self._build_presign_client_config(),
+            )
+        return self._presign_client
 
     async def ensure_bucket_exists(self) -> None:
         async with self._get_client() as client:
@@ -90,7 +101,8 @@ class S3ObjectStorage(ObjectStorage):
         content_type: str,
         expires_in: int,
     ) -> str:
-        return self._presign_client.generate_presigned_url(
+        presign_client = self._get_or_create_presign_client()
+        return presign_client.generate_presigned_url(
             "put_object",
             Params={
                 "Bucket": self._bucket,
@@ -106,7 +118,8 @@ class S3ObjectStorage(ObjectStorage):
         object_key: str,
         expires_in: int,
     ) -> str:
-        return self._presign_client.generate_presigned_url(
+        presign_client = self._get_or_create_presign_client()
+        return presign_client.generate_presigned_url(
             "get_object",
             Params={
                 "Bucket": self._bucket,

@@ -203,6 +203,7 @@ class EmployerSearchHandlersMixin:
                 page=page,
                 total_pages=total_pages,
             ),
+            parse_mode="Markdown",
             reply_markup=await self._build_searches_list_markup(
                 actor.id,
                 searches,

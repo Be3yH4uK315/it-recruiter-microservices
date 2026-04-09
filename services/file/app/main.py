@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from contextlib import suppress
 
 import httpx
 from fastapi import FastAPI
@@ -105,6 +106,11 @@ async def _resolve_ngrok_public_base_url(
                     },
                 )
                 return None
+        except httpx.ConnectError:
+            logger.info(
+                "ngrok api is not reachable yet, retrying",
+                extra={"ngrok_api_url": settings.ngrok_api_url},
+            )
         except Exception:
             logger.warning(
                 "failed to resolve ngrok public url, retrying",
@@ -121,6 +127,58 @@ async def _resolve_ngrok_public_base_url(
         },
     )
     return None
+
+
+async def _configure_s3_public_endpoint(
+    *,
+    app: FastAPI,
+    http_client: httpx.AsyncClient,
+) -> bool:
+    settings = app.state.settings
+
+    if settings.s3_public_endpoint_url:
+        logger.info(
+            "s3 public endpoint is configured explicitly",
+            extra={"s3_public_endpoint_url": settings.s3_public_endpoint_url},
+        )
+        return True
+
+    ngrok_base_url = await _resolve_ngrok_public_base_url(
+        app=app,
+        http_client=http_client,
+    )
+    if not ngrok_base_url:
+        logger.warning("s3 public endpoint is not resolved, retry scheduled")
+        return False
+
+    settings.s3_public_endpoint_url = ngrok_base_url
+    logger.info(
+        "s3 public endpoint was resolved via ngrok",
+        extra={"s3_public_endpoint_url": settings.s3_public_endpoint_url},
+    )
+    return True
+
+
+async def _configure_s3_public_endpoint_in_background(
+    *,
+    app: FastAPI,
+    http_client: httpx.AsyncClient,
+) -> None:
+    settings = app.state.settings
+    retry_delay = max(5.0, settings.s3_public_endpoint_discovery_poll_interval_seconds)
+
+    while True:
+        configured = await _configure_s3_public_endpoint(
+            app=app,
+            http_client=http_client,
+        )
+        if configured:
+            return
+        logger.info(
+            "s3 public endpoint resolution will be retried in background",
+            extra={"retry_delay_seconds": retry_delay},
+        )
+        await asyncio.sleep(retry_delay)
 
 
 @asynccontextmanager
@@ -144,23 +202,6 @@ async def lifespan(app: FastAPI):
         },
     )
 
-    if not settings.s3_public_endpoint_url:
-        ngrok_base_url = await _resolve_ngrok_public_base_url(
-            app=app,
-            http_client=http_client,
-        )
-        if ngrok_base_url:
-            settings.s3_public_endpoint_url = ngrok_base_url
-            logger.info(
-                "s3 public endpoint was resolved via ngrok",
-                extra={"s3_public_endpoint_url": settings.s3_public_endpoint_url},
-            )
-    else:
-        logger.info(
-            "s3 public endpoint is configured explicitly",
-            extra={"s3_public_endpoint_url": settings.s3_public_endpoint_url},
-        )
-
     storage = S3ObjectStorage(settings)
 
     app.state.storage = storage
@@ -176,11 +217,24 @@ async def lifespan(app: FastAPI):
         },
     )
 
+    endpoint_task = None
+    endpoint_task = asyncio.create_task(
+        _configure_s3_public_endpoint_in_background(
+            app=app,
+            http_client=http_client,
+        )
+    )
+    app.state.s3_public_endpoint_task = endpoint_task
+
     try:
         await storage.ensure_bucket_exists()
         yield
     finally:
         logger.info("application shutdown")
+        if endpoint_task is not None:
+            endpoint_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await endpoint_task
         shutdown_telemetry(telemetry)
         await http_client.aclose()
         await engine.dispose()
