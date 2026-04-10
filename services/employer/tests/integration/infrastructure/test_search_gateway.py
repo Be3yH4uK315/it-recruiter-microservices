@@ -24,7 +24,10 @@ async def test_search_gateway_returns_batch_on_200() -> None:
         assert request.url.path == "/api/v1/search/candidates"
         assert request.headers["Authorization"] == "Bearer secret"
         assert request.method == "POST"
-        assert request.read() == b'{"filters":{"role":"Python Developer"},"limit":50}'
+        assert (
+            request.read()
+            == b'{"filters":{"role":"Python Developer"},"limit":50,"include_total":true}'
+        )
         return httpx.Response(
             status_code=200,
             json={

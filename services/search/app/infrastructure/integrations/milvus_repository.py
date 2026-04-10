@@ -44,6 +44,26 @@ class MilvusCandidateRepository(VectorSearchRepository):
             return
         await self.client.insert([str(candidate_id)], [embedding])
 
+    async def upsert_vectors(
+        self,
+        *,
+        candidate_ids: list[UUID],
+        embeddings: list[list[float]],
+    ) -> None:
+        ids: list[str] = []
+        vectors: list[list[float]] = []
+
+        for candidate_id, embedding in zip(candidate_ids, embeddings, strict=False):
+            if not embedding:
+                continue
+            ids.append(str(candidate_id))
+            vectors.append(embedding)
+
+        if not ids:
+            return
+
+        await self.client.insert(ids, vectors)
+
     async def delete_vector(self, *, candidate_id: UUID) -> None:
         await self.client.delete(str(candidate_id))
 

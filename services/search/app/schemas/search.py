@@ -92,6 +92,7 @@ class SearchCandidatesRequest(BaseModel):
 
     filters: SearchFiltersRequest
     limit: int = Field(default=20, ge=1, le=100)
+    include_total: bool = True
 
     def to_query(self) -> SearchCandidatesQuery:
         return SearchCandidatesQuery(
@@ -109,6 +110,7 @@ class SearchCandidatesRequest(BaseModel):
             exclude_ids=self.filters.exclude_ids,
             about_me=self.filters.about_me,
             limit=self.limit,
+            include_total=self.include_total,
         )
 
 

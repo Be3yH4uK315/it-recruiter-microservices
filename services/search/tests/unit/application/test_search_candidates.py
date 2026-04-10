@@ -21,8 +21,9 @@ class FakeHybridSearchService:
         *,
         filters: dict,
         limit: int,
+        include_total: bool = True,
     ) -> HybridSearchResult:
-        self.calls.append((filters, limit))
+        self.calls.append((filters, limit, include_total))
         return self.result
 
 
@@ -125,8 +126,9 @@ async def test_search_candidates_handler_passes_filters_to_hybrid_service() -> N
     await handler(query)
 
     assert hybrid.calls
-    filters, limit = hybrid.calls[0]
+    filters, limit, include_total = hybrid.calls[0]
     assert limit == 7
+    assert include_total is True
     assert filters["role"] == "Backend Engineer"
     assert filters["must_skills"] == [{"skill": "python", "level": 5}]
     assert filters["nice_skills"] == [{"skill": "docker", "level": 3}]

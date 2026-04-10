@@ -62,22 +62,29 @@ class CrossEncoderRanker(Ranker):
     concurrency_limit: int = 1
     _model: CrossEncoder | None = field(default=None, init=False, repr=False)
     _semaphore: asyncio.Semaphore = field(init=False, repr=False)
+    _startup_lock: asyncio.Lock = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._semaphore = asyncio.Semaphore(self.concurrency_limit)
+        self._startup_lock = asyncio.Lock()
 
     async def startup(self) -> None:
         if self._model is not None:
             return
-        if CrossEncoder is None:
-            raise RankingUnavailableError(
-                "sentence-transformers dependency is not installed"
-            ) from _SENTENCE_TRANSFORMERS_IMPORT_ERROR
 
-        try:
-            self._model = await asyncio.to_thread(CrossEncoder, self.model_name)
-        except Exception as exc:
-            raise RankingUnavailableError("ranker model initialization failed") from exc
+        async with self._startup_lock:
+            if self._model is not None:
+                return
+
+            if CrossEncoder is None:
+                raise RankingUnavailableError(
+                    "sentence-transformers dependency is not installed"
+                ) from _SENTENCE_TRANSFORMERS_IMPORT_ERROR
+
+            try:
+                self._model = await asyncio.to_thread(CrossEncoder, self.model_name)
+            except Exception as exc:
+                raise RankingUnavailableError("ranker model initialization failed") from exc
 
     async def shutdown(self) -> None:
         self._model = None
@@ -93,7 +100,7 @@ class CrossEncoderRanker(Ranker):
             return []
 
         if self._model is None:
-            raise RankingUnavailableError("ranker model is not initialized")
+            await self.startup()
 
         effective_query_text = query_text.strip() or str(filters.get("role") or "").strip()
         if not effective_query_text:

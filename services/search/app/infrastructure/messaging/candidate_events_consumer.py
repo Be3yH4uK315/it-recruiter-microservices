@@ -13,6 +13,17 @@ from app.infrastructure.observability.logger import get_logger
 
 logger = get_logger(__name__)
 
+_PRIMARY_ROUTING_KEYS = (
+    "search.candidate.sync.requested",
+    "candidate.deleted",
+    "candidate.status.changed",
+)
+_DEPRECATED_DUPLICATE_ROUTING_KEYS = (
+    "candidate.created",
+    "candidate.updated",
+    "candidate.search_document.updated",
+)
+
 
 @dataclass(slots=True)
 class CandidateEventsConsumer:
@@ -52,15 +63,13 @@ class CandidateEventsConsumer:
                 durable=True,
             )
 
-            routing_keys = [
-                "search.candidate.sync.requested",
-                "candidate.created",
-                "candidate.updated",
-                "candidate.deleted",
-                "candidate.status.changed",
-                "candidate.search_document.updated",
-            ]
-            for routing_key in routing_keys:
+            for routing_key in _DEPRECATED_DUPLICATE_ROUTING_KEYS:
+                try:
+                    await queue.unbind(exchange, routing_key)
+                except Exception:
+                    continue
+
+            for routing_key in _PRIMARY_ROUTING_KEYS:
                 await queue.bind(exchange, routing_key)
 
             logger.info(
@@ -75,11 +84,28 @@ class CandidateEventsConsumer:
                 async for message in queue_iter:
                     if stop_event.is_set():
                         break
-                    await self._handle_message(message)
+                    try:
+                        await self._handle_message(message)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        logger.exception(
+                            "candidate event handling failed",
+                            extra={"routing_key": message.routing_key},
+                        )
+                        continue
         finally:
             await connection.close()
 
     async def _handle_message(self, message: aio_pika.abc.AbstractIncomingMessage) -> None:
+        if message.routing_key in _DEPRECATED_DUPLICATE_ROUTING_KEYS:
+            logger.info(
+                "skip deprecated duplicate candidate event",
+                extra={"routing_key": message.routing_key},
+            )
+            await message.ack()
+            return
+
         payload = self._decode_message_body(message.body)
         if payload is None:
             logger.warning("skip invalid message payload")
@@ -130,6 +156,7 @@ class CandidateEventsConsumer:
         response = await self.http_client.post(
             url,
             headers=self._build_internal_headers(),
+            timeout=self.settings.internal_index_callback_timeout_seconds,
         )
         self._raise_for_status(response, "upsert", candidate_id)
 
@@ -141,6 +168,7 @@ class CandidateEventsConsumer:
         response = await self.http_client.delete(
             url,
             headers=self._build_internal_headers(),
+            timeout=self.settings.internal_index_callback_timeout_seconds,
         )
         self._raise_for_status(response, "delete", candidate_id)
 

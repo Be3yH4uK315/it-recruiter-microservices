@@ -107,5 +107,6 @@ class HybridSearchService(ABC):
         *,
         filters: dict[str, Any],
         limit: int,
+        include_total: bool = True,
     ) -> HybridSearchResult:
         raise NotImplementedError

@@ -61,8 +61,13 @@ class DefaultHybridSearchService(HybridSearchService):
         *,
         filters: dict[str, Any],
         limit: int,
+        include_total: bool = True,
     ) -> HybridSearchResult:
-        cache_key = self._build_result_cache_key(filters=filters, limit=limit)
+        cache_key = self._build_result_cache_key(
+            filters=filters,
+            limit=limit,
+            include_total=include_total,
+        )
         cached_result = self._get_cached_result(cache_key)
         if cached_result is not None:
             return cached_result
@@ -72,20 +77,36 @@ class DefaultHybridSearchService(HybridSearchService):
         query_text = self._build_query_text(filters)
         timings: dict[str, float] = {}
 
-        lexical_total, lexical_ids, vector_ids = await asyncio.gather(
-            self._timed_count_candidates(filters=filters, timings=timings),
-            self._timed_search_candidate_ids(
-                filters=filters,
-                limit=effective_limit,
-                timings=timings,
-            ),
-            self._search_vector_ids(
-                filters=filters,
-                query_text=query_text,
-                limit=effective_limit,
-                timings=timings,
-            ),
-        )
+        lexical_total: int | None = None
+        if include_total:
+            lexical_total, lexical_ids, vector_ids = await asyncio.gather(
+                self._timed_count_candidates(filters=filters, timings=timings),
+                self._timed_search_candidate_ids(
+                    filters=filters,
+                    limit=effective_limit,
+                    timings=timings,
+                ),
+                self._search_vector_ids(
+                    filters=filters,
+                    query_text=query_text,
+                    limit=effective_limit,
+                    timings=timings,
+                ),
+            )
+        else:
+            lexical_ids, vector_ids = await asyncio.gather(
+                self._timed_search_candidate_ids(
+                    filters=filters,
+                    limit=effective_limit,
+                    timings=timings,
+                ),
+                self._search_vector_ids(
+                    filters=filters,
+                    query_text=query_text,
+                    limit=effective_limit,
+                    timings=timings,
+                ),
+            )
 
         fused = reciprocal_rank_fusion(
             ranked_lists=[lexical_ids, vector_ids],
@@ -107,7 +128,7 @@ class DefaultHybridSearchService(HybridSearchService):
             )
             return self._cache_result(
                 cache_key,
-                HybridSearchResult(total=lexical_total, items=[]),
+                HybridSearchResult(total=self._resolve_total(lexical_total, []), items=[]),
             )
 
         rerank_window = self._resolve_rerank_window(
@@ -133,7 +154,7 @@ class DefaultHybridSearchService(HybridSearchService):
             )
             return self._cache_result(
                 cache_key,
-                HybridSearchResult(total=lexical_total, items=[]),
+                HybridSearchResult(total=self._resolve_total(lexical_total, []), items=[]),
             )
 
         ordered_documents = self._order_documents_by_ids(
@@ -155,7 +176,7 @@ class DefaultHybridSearchService(HybridSearchService):
             )
             return self._cache_result(
                 cache_key,
-                HybridSearchResult(total=lexical_total, items=[]),
+                HybridSearchResult(total=self._resolve_total(lexical_total, []), items=[]),
             )
 
         hard_filters_started_at = time.perf_counter()
@@ -179,7 +200,7 @@ class DefaultHybridSearchService(HybridSearchService):
             )
             return self._cache_result(
                 cache_key,
-                HybridSearchResult(total=lexical_total, items=[]),
+                HybridSearchResult(total=self._resolve_total(lexical_total, []), items=[]),
             )
 
         rerank_started_at = time.perf_counter()
@@ -206,7 +227,7 @@ class DefaultHybridSearchService(HybridSearchService):
             return self._cache_result(
                 cache_key,
                 HybridSearchResult(
-                    total=lexical_total,
+                    total=self._resolve_total(lexical_total, ranked_documents[:limit]),
                     items=ranked_documents[:limit],
                 ),
             )
@@ -227,7 +248,7 @@ class DefaultHybridSearchService(HybridSearchService):
         return self._cache_result(
             cache_key,
             HybridSearchResult(
-                total=lexical_total,
+                total=self._resolve_total(lexical_total, filtered_documents[:limit]),
                 items=filtered_documents[:limit],
             ),
         )
@@ -304,9 +325,11 @@ class DefaultHybridSearchService(HybridSearchService):
         *,
         filters: dict[str, Any],
         limit: int,
+        include_total: bool,
     ) -> str:
         payload = {
             "limit": limit,
+            "include_total": include_total,
             "filters": self._normalize_for_cache(filters),
         }
         return json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -372,6 +395,10 @@ class DefaultHybridSearchService(HybridSearchService):
         while len(self._result_cache) > self.result_cache_size:
             self._result_cache.popitem(last=False)
 
+    def clear_runtime_caches(self) -> None:
+        self._query_embedding_cache.clear()
+        self._result_cache.clear()
+
     @staticmethod
     def _elapsed_ms(started_at: float) -> float:
         return round((time.perf_counter() - started_at) * 1000, 2)
@@ -382,7 +409,7 @@ class DefaultHybridSearchService(HybridSearchService):
         timings: dict[str, float],
         total_ms: float,
         limit: int,
-        lexical_total: int,
+        lexical_total: int | None,
         lexical_ids: list[str],
         vector_ids: list[str],
         fused_count: int,
@@ -417,6 +444,15 @@ class DefaultHybridSearchService(HybridSearchService):
                 "used_ranker": used_ranker,
             },
         )
+
+    @staticmethod
+    def _resolve_total(
+        lexical_total: int | None,
+        items: list[dict[str, Any]],
+    ) -> int:
+        if lexical_total is not None:
+            return lexical_total
+        return len(items)
 
     def _resolve_rerank_window(
         self,

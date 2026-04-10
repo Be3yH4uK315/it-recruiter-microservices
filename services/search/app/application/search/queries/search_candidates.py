@@ -34,6 +34,7 @@ class SearchCandidatesQuery:
     exclude_ids: list[UUID] = field(default_factory=list)
     about_me: str | None = None
     limit: int = 20
+    include_total: bool = True
 
 
 class SearchCandidatesHandler:
@@ -66,6 +67,7 @@ class SearchCandidatesHandler:
         search_result = await self._hybrid_search_service.search(
             filters=filters.to_primitives(),
             limit=query.limit,
+            include_total=query.include_total,
         )
 
         items: list[CandidateSearchHitView] = []

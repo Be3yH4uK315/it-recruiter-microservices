@@ -241,5 +241,6 @@ class SearchGateway(ABC):
         *,
         filters: dict,
         limit: int,
+        include_total: bool = True,
     ) -> SearchCandidatesBatchResult:
         raise NotImplementedError

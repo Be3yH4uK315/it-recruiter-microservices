@@ -20,5 +20,5 @@ def build_elasticsearch_client(settings: Settings) -> AsyncElasticsearch:
         ) from _ELASTICSEARCH_IMPORT_ERROR
     return AsyncElasticsearch(
         settings.elasticsearch_url,
-        request_timeout=settings.http_client_timeout_seconds,
+        request_timeout=settings.elasticsearch_request_timeout_seconds,
     )

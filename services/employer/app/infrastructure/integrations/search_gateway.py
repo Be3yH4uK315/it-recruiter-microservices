@@ -35,11 +35,13 @@ class HttpSearchGateway(SearchGateway):
         *,
         filters: dict,
         limit: int,
+        include_total: bool = True,
     ) -> SearchCandidatesBatchResult:
         url = f"{self._base_url}/api/v1/search/candidates"
         payload = {
             "filters": filters,
             "limit": limit,
+            "include_total": include_total,
         }
 
         async def _do_request() -> SearchCandidatesBatchResult:

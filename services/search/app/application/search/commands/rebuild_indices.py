@@ -55,6 +55,8 @@ class RebuildIndicesHandler:
                 completed_full_scan = True
                 break
 
+            vectors_to_upsert: list[tuple[UUID, list[float]]] = []
+
             for payload in batch:
                 processed += 1
                 active_candidate_ids.add(payload.id)
@@ -73,9 +75,11 @@ class RebuildIndicesHandler:
                         candidate_id=indexed_document.candidate_id,
                         document=indexed_document.document,
                     )
-                    await self._vector_repository.upsert_vector(
-                        candidate_id=indexed_document.candidate_id,
-                        embedding=indexed_document.embedding,
+                    vectors_to_upsert.append(
+                        (
+                            indexed_document.candidate_id,
+                            indexed_document.embedding,
+                        )
                     )
                     indexed += 1
                 except Exception as exc:
@@ -89,6 +93,8 @@ class RebuildIndicesHandler:
                         },
                         exc_info=exc,
                     )
+
+            failed += await self._upsert_vectors_batch(vectors_to_upsert)
 
             if len(batch) < command.batch_size:
                 completed_full_scan = True
@@ -105,6 +111,50 @@ class RebuildIndicesHandler:
             skipped=skipped,
             failed=failed,
         )
+
+    async def _upsert_vectors_batch(
+        self,
+        items: list[tuple[UUID, list[float]]],
+    ) -> int:
+        if not items:
+            return 0
+
+        bulk_upsert = getattr(self._vector_repository, "upsert_vectors", None)
+        if callable(bulk_upsert):
+            try:
+                await bulk_upsert(
+                    candidate_ids=[candidate_id for candidate_id, _ in items],
+                    embeddings=[embedding for _, embedding in items],
+                )
+                return 0
+            except Exception as exc:
+                logger.exception(
+                    "candidate vector batch upsert failed, falling back to single upserts",
+                    extra={
+                        "batch_size": len(items),
+                        "error_type": exc.__class__.__name__,
+                    },
+                    exc_info=exc,
+                )
+
+        failed = 0
+        for candidate_id, embedding in items:
+            try:
+                await self._vector_repository.upsert_vector(
+                    candidate_id=candidate_id,
+                    embedding=embedding,
+                )
+            except Exception as exc:
+                failed += 1
+                logger.exception(
+                    "candidate vector single upsert failed",
+                    extra={
+                        "candidate_id": str(candidate_id),
+                        "error_type": exc.__class__.__name__,
+                    },
+                    exc_info=exc,
+                )
+        return failed
 
     async def _delete_orphaned_documents(self, active_candidate_ids: set[UUID]) -> None:
         active_ids_as_text = {str(candidate_id) for candidate_id in active_candidate_ids}

@@ -1,0 +1,243 @@
+{
+  "k_values": [
+    5,
+    10
+  ],
+  "cases": [
+    {
+      "id": "python_backend_fastapi",
+      "filters": {
+        "role": "Python Backend Developer",
+        "must_skills": [
+          {
+            "skill": "Python",
+            "level": 4
+          },
+          {
+            "skill": "FastAPI",
+            "level": 3
+          }
+        ],
+        "nice_skills": [
+          {
+            "skill": "PostgreSQL",
+            "level": 3
+          },
+          {
+            "skill": "Docker",
+            "level": 3
+          },
+          {
+            "skill": "RabbitMQ",
+            "level": 2
+          }
+        ],
+        "experience_min": 3,
+        "experience_max": 6,
+        "location": "Новосибирск",
+        "work_modes": [
+          "remote",
+          "hybrid"
+        ],
+        "salary_min": 180000,
+        "salary_max": 280000,
+        "currency": "RUB",
+        "english_level": "B2",
+        "about_me": "Разработка асинхронных API, микросервисов и интеграций"
+      },
+      "relevance": {
+        "44e79fc2-ef63-4469-9f36-5209f4597f5f": 3,
+        "3b8893d8-a7f7-43a3-9595-6384aaebb11a": 2,
+        "5614ab1d-ddf9-4d54-b291-1887fa683ebf": 1
+      }
+    },
+    {
+      "id": "go_backend_platform",
+      "filters": {
+        "role": "Go Backend Developer",
+        "must_skills": [
+          {
+            "skill": "Go",
+            "level": 4
+          }
+        ],
+        "nice_skills": [
+          {
+            "skill": "gRPC",
+            "level": 3
+          },
+          {
+            "skill": "PostgreSQL",
+            "level": 3
+          },
+          {
+            "skill": "Docker",
+            "level": 3
+          }
+        ],
+        "experience_min": 2,
+        "experience_max": 6,
+        "location": "Новосибирск",
+        "work_modes": [
+          "remote",
+          "hybrid"
+        ],
+        "salary_min": 170000,
+        "salary_max": 300000,
+        "currency": "RUB",
+        "english_level": "B1",
+        "about_me": "Разработка высоконагруженных backend-сервисов"
+      },
+      "relevance": {
+        "7d987052-3183-46e9-be5a-f2bd27f26d0e": 3,
+        "42e02e1e-d11d-4ddc-9dc5-04d444025b22": 2,
+        "f28523e1-27f4-4526-a7f7-014a8b840f41": 1
+      }
+    },
+    {
+      "id": "devops_engineer",
+      "filters": {
+        "role": "DevOps Engineer",
+        "must_skills": [
+          {
+            "skill": "Docker",
+            "level": 4
+          },
+          {
+            "skill": "Linux",
+            "level": 4
+          }
+        ],
+        "nice_skills": [
+          {
+            "skill": "Kubernetes",
+            "level": 3
+          },
+          {
+            "skill": "CI/CD",
+            "level": 3
+          },
+          {
+            "skill": "Prometheus",
+            "level": 2
+          }
+        ],
+        "experience_min": 3,
+        "experience_max": 7,
+        "location": "Новосибирск",
+        "work_modes": [
+          "hybrid",
+          "onsite"
+        ],
+        "salary_min": 180000,
+        "salary_max": 320000,
+        "currency": "RUB",
+        "english_level": "B1",
+        "about_me": "Автоматизация поставки, мониторинга и эксплуатации сервисов"
+      },
+      "relevance": {
+        "12b08cf6-ecca-4dfa-b638-b090e62bb462": 3,
+        "7ece9560-6e45-4cbf-8410-06856588dfab": 2,
+        "afd912fe-9467-4314-9f5e-14012479ac01": 1
+      }
+    },
+    {
+      "id": "frontend_react",
+      "filters": {
+        "role": "Frontend Developer",
+        "must_skills": [
+          {
+            "skill": "JavaScript",
+            "level": 4
+          },
+          {
+            "skill": "React",
+            "level": 4
+          }
+        ],
+        "nice_skills": [
+          {
+            "skill": "TypeScript",
+            "level": 3
+          },
+          {
+            "skill": "Redux",
+            "level": 2
+          },
+          {
+            "skill": "HTML",
+            "level": 4
+          },
+          {
+            "skill": "CSS",
+            "level": 4
+          }
+        ],
+        "experience_min": 2,
+        "experience_max": 5,
+        "location": "Новосибирск",
+        "work_modes": [
+          "remote",
+          "hybrid"
+        ],
+        "salary_min": 140000,
+        "salary_max": 230000,
+        "currency": "RUB",
+        "english_level": "B1",
+        "about_me": "Разработка клиентских интерфейсов и SPA"
+      },
+      "relevance": {
+        "a2e6cafa-a834-485c-8148-51e4c80950ef": 3,
+        "fa6e2666-aad8-47de-80c8-5590c2669ad7": 2,
+        "066e1875-6696-4d60-a4d6-8bb4e07883a8": 1
+      }
+    },
+    {
+      "id": "data_analyst_python_sql",
+      "filters": {
+        "role": "Data Analyst",
+        "must_skills": [
+          {
+            "skill": "SQL",
+            "level": 4
+          },
+          {
+            "skill": "Python",
+            "level": 3
+          }
+        ],
+        "nice_skills": [
+          {
+            "skill": "Power BI",
+            "level": 2
+          },
+          {
+            "skill": "Tableau",
+            "level": 2
+          },
+          {
+            "skill": "Excel",
+            "level": 4
+          }
+        ],
+        "experience_min": 2,
+        "experience_max": 5,
+        "location": "Новосибирск",
+        "work_modes": [
+          "remote",
+          "hybrid"
+        ],
+        "salary_min": 120000,
+        "salary_max": 220000,
+        "currency": "RUB",
+        "english_level": "B1",
+        "about_me": "Подготовка аналитической отчетности и исследование данных"
+      },
+      "relevance": {
+        "35243301-9b0b-43d5-837b-ae79590c382d": 3,
+        "1a3205e2-309b-4cbb-aaf7-5cae25084f43": 2,
+        "43afd1a3-d75b-49de-adcd-40445ad02b44": 1
+      }
+    }
+  ]
+}

@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     port: int = 8000
 
     http_client_timeout_seconds: float = 10.0
+    internal_index_callback_timeout_seconds: float = 60.0
+    elasticsearch_request_timeout_seconds: float = 30.0
     http_client_max_connections: int = 200
     http_client_max_keepalive_connections: int = 50
     http_client_keepalive_expiry_seconds: float = 20.0
@@ -44,10 +46,10 @@ class Settings(BaseSettings):
     ml_concurrency_limit: int = 1
 
     retrieval_size: int = 100
-    rerank_top_k: int = 30
+    rerank_top_k: int = 10
     rrf_k: int = 60
     index_embedding_cache_size: int = 256
-    search_result_cache_ttl_seconds: float = 2.0
+    search_result_cache_ttl_seconds: float = 30.0
     search_result_cache_size: int = 128
     search_timing_logging_enabled: bool = False
     search_timing_logging_threshold_ms: float = 1000.0

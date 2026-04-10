@@ -1,0 +1,136 @@
+{
+  "k_values": [
+    5,
+    10
+  ],
+  "rerank_top_k_values": [
+    10,
+    15,
+    20,
+    30
+  ],
+  "baseline_summaries": [
+    {
+      "mode": "lexical",
+      "query_count": 5,
+      "average_latency_ms": 195.151,
+      "precision_at_k": {
+        "5": 0.56,
+        "10": 0.28
+      },
+      "recall_at_k": {
+        "5": 0.933333,
+        "10": 0.933333
+      },
+      "mrr": 1.0,
+      "ndcg_at_k": {
+        "5": 0.841313,
+        "10": 0.841313
+      }
+    },
+    {
+      "mode": "vector",
+      "query_count": 5,
+      "average_latency_ms": 315.052,
+      "precision_at_k": {
+        "5": 0.56,
+        "10": 0.28
+      },
+      "recall_at_k": {
+        "5": 0.933333,
+        "10": 0.933333
+      },
+      "mrr": 1.0,
+      "ndcg_at_k": {
+        "5": 0.889475,
+        "10": 0.889475
+      }
+    }
+  ],
+  "hybrid_variants": [
+    {
+      "rerank_top_k": 10,
+      "summary": {
+        "mode": "hybrid",
+        "query_count": 5,
+        "average_latency_ms": 1581.423,
+        "precision_at_k": {
+          "5": 0.56,
+          "10": 0.28
+        },
+        "recall_at_k": {
+          "5": 0.933333,
+          "10": 0.933333
+        },
+        "mrr": 1.0,
+        "ndcg_at_k": {
+          "5": 0.983778,
+          "10": 0.983778
+        }
+      }
+    },
+    {
+      "rerank_top_k": 15,
+      "summary": {
+        "mode": "hybrid",
+        "query_count": 5,
+        "average_latency_ms": 335.174,
+        "precision_at_k": {
+          "5": 0.56,
+          "10": 0.28
+        },
+        "recall_at_k": {
+          "5": 0.933333,
+          "10": 0.933333
+        },
+        "mrr": 1.0,
+        "ndcg_at_k": {
+          "5": 0.983778,
+          "10": 0.983778
+        }
+      }
+    },
+    {
+      "rerank_top_k": 20,
+      "summary": {
+        "mode": "hybrid",
+        "query_count": 5,
+        "average_latency_ms": 540.991,
+        "precision_at_k": {
+          "5": 0.56,
+          "10": 0.28
+        },
+        "recall_at_k": {
+          "5": 0.933333,
+          "10": 0.933333
+        },
+        "mrr": 1.0,
+        "ndcg_at_k": {
+          "5": 0.983778,
+          "10": 0.983778
+        }
+      }
+    },
+    {
+      "rerank_top_k": 30,
+      "summary": {
+        "mode": "hybrid",
+        "query_count": 5,
+        "average_latency_ms": 243.88,
+        "precision_at_k": {
+          "5": 0.56,
+          "10": 0.28
+        },
+        "recall_at_k": {
+          "5": 0.933333,
+          "10": 0.933333
+        },
+        "mrr": 1.0,
+        "ndcg_at_k": {
+          "5": 0.983778,
+          "10": 0.983778
+        }
+      }
+    }
+  ]
+}

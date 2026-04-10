@@ -130,6 +130,7 @@ class StubSearchGateway(SearchGateway):
         *,
         filters: dict,
         limit: int,
+        include_total: bool = True,
         offset: int = 0,
     ) -> SearchCandidatesBatchResult:
         return self._results.get(

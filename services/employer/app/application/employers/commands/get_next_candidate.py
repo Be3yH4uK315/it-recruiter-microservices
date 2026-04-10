@@ -133,6 +133,7 @@ class GetNextCandidateHandler:
         batch = await self._search_gateway.search_candidates(
             filters=merged_filters.to_primitives(),
             limit=_SEARCH_BATCH_LIMIT,
+            include_total=session.search_total <= 0,
         )
 
         if not batch.items:
