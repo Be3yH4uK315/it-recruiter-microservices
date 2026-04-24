@@ -2,10 +2,10 @@
   "name": "smoke",
   "description": "Quick validation of search indexing and candidate search.",
   "host": "http://localhost:8005",
-  "users": 1,
+  "users": 2,
   "spawn_rate": 1,
   "run_time": "30s",
   "stop_timeout": 5,
-  "wait_time_min_sec": 0.4,
-  "wait_time_max_sec": 1.0
+  "wait_time_min_sec": 0.2,
+  "wait_time_max_sec": 0.5
 }

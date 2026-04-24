@@ -347,6 +347,8 @@ async def test_search_session_repository_list_by_employer_preserves_decisions_an
         await employer_repo.add(employer)
         await search_repo.add(first)
         await search_repo.add(second)
+        await search_repo.replace_pool(first.id, first.candidate_pool)
+        await search_repo.replace_pool(second.id, second.candidate_pool)
         await search_repo.upsert_decision(first.id, first_decision)
         await search_repo.upsert_decision(second.id, second_decision)
         await session.commit()

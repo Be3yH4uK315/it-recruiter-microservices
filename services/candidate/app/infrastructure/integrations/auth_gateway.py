@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from uuid import UUID
 
@@ -28,6 +29,9 @@ class AuthGatewayProtocolError(AuthGatewayError):
 
 
 class HttpAuthGateway(AuthGateway):
+    _VERIFY_ATTEMPTS = 3
+    _RETRYABLE_STATUS_CODES = {500, 502, 503, 504}
+
     def __init__(
         self,
         *,
@@ -49,27 +53,56 @@ class HttpAuthGateway(AuthGateway):
 
         url = f"{self._base_url}/api/v1/internal/auth/verify"
 
-        try:
-            response = await self._client.post(
-                url,
-                headers={
-                    "Accept": "application/json",
-                    "Authorization": f"Bearer {self._internal_token}",
-                },
-                json={
-                    "access_token": access_token,
-                },
-            )
-        except httpx.HTTPError as exc:
+        response: httpx.Response | None = None
+        last_error: httpx.HTTPError | None = None
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {self._internal_token}",
+        }
+        payload = {
+            "access_token": access_token,
+        }
+
+        for attempt in range(1, self._VERIFY_ATTEMPTS + 1):
+            try:
+                response = await self._client.post(
+                    url,
+                    headers=headers,
+                    json=payload,
+                )
+            except httpx.HTTPError as exc:
+                last_error = exc
+                logger.warning(
+                    "auth gateway verify request failed",
+                    extra={
+                        "base_url": self._base_url,
+                        "error_type": exc.__class__.__name__,
+                        "attempt": attempt,
+                    },
+                    exc_info=exc,
+                )
+                if attempt == self._VERIFY_ATTEMPTS:
+                    raise AuthServiceUnavailableError("auth verify request failed") from exc
+                await asyncio.sleep(0.1 * attempt)
+                continue
+
+            if response.status_code not in self._RETRYABLE_STATUS_CODES:
+                break
+
             logger.warning(
-                "auth gateway verify request failed",
+                "auth gateway verify returned retryable status",
                 extra={
                     "base_url": self._base_url,
-                    "error_type": exc.__class__.__name__,
+                    "status_code": response.status_code,
+                    "attempt": attempt,
                 },
-                exc_info=exc,
             )
-            raise AuthServiceUnavailableError("auth verify request failed") from exc
+            if attempt == self._VERIFY_ATTEMPTS:
+                raise AuthServiceUnavailableError("auth service is unavailable")
+            await asyncio.sleep(0.1 * attempt)
+
+        if response is None:
+            raise AuthServiceUnavailableError("auth verify request failed") from last_error
 
         if response.status_code == 401:
             raise InvalidAccessTokenGatewayError("access token is invalid")

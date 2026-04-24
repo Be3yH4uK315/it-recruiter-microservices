@@ -339,6 +339,39 @@ def resolve_locust_executable(service_root: Path) -> str:
     raise RuntimeError("Locust executable not found. Install service dev dependencies first.")
 
 
+def _build_healthcheck_url(host: str) -> str:
+    normalized = host.rstrip("/")
+    if normalized.endswith("/api/v1/health"):
+        return normalized
+    return f"{normalized}/api/v1/health"
+
+
+def wait_for_service_ready(host: str, *, timeout_sec: float, request_timeout_sec: float) -> None:
+    import requests
+
+    healthcheck_url = _build_healthcheck_url(host)
+    deadline = time.monotonic() + timeout_sec
+    last_error: str | None = None
+    read_timeout = max(1.0, min(request_timeout_sec, 5.0))
+
+    while time.monotonic() < deadline:
+        try:
+            response = requests.get(healthcheck_url, timeout=read_timeout)
+        except requests.RequestException as exc:
+            last_error = str(exc)
+            time.sleep(1.0)
+            continue
+
+        if 200 <= response.status_code < 300:
+            return
+
+        last_error = f"status={response.status_code} body={response.text[:200]}"
+        time.sleep(1.0)
+
+    details = f": {last_error}" if last_error else ""
+    raise RuntimeError(f"Service is not ready at {healthcheck_url}{details}")
+
+
 def run_headless_locust(service_name: str) -> int:
     parser = argparse.ArgumentParser(description=f"Run {service_name} loadtests")
     parser.add_argument("--profile", default="baseline", choices=("smoke", "baseline", "stress"))
@@ -350,6 +383,8 @@ def run_headless_locust(service_name: str) -> int:
     parser.add_argument("--internal-token", default="change-me-internal-service-token")
     parser.add_argument("--webhook-secret", default="change-me-webhook-secret")
     parser.add_argument("--request-timeout-sec", type=float, default=10.0)
+    parser.add_argument("--readiness-timeout-sec", type=float, default=90.0)
+    parser.add_argument("--skip-readiness-check", action="store_true")
     parser.add_argument("locust_args", nargs="*")
     args = parser.parse_args()
 
@@ -382,6 +417,14 @@ def run_headless_locust(service_name: str) -> int:
         }
     )
 
+    host = str(args.host or profile.get("host", DEFAULT_SERVICE_URLS[service_name]))
+    if not args.skip_readiness_check:
+        wait_for_service_ready(
+            host,
+            timeout_sec=args.readiness_timeout_sec,
+            request_timeout_sec=args.request_timeout_sec,
+        )
+
     command = [
         resolve_locust_executable(service_root),
         "-f",
@@ -394,7 +437,7 @@ def run_headless_locust(service_name: str) -> int:
         "--run-time",
         str(profile["run_time"]),
         "--host",
-        str(args.host or profile.get("host", DEFAULT_SERVICE_URLS[service_name])),
+        host,
         "--stop-timeout",
         str(profile.get("stop_timeout", 15)),
     ]

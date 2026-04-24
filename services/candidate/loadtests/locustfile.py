@@ -4,7 +4,6 @@ from locust import HttpUser, task
 
 from loadtests.common import (
     LoadTestConfig,
-    ServiceContextCache,
     ensure_candidate_profile,
     ensure_employer_profile,
     expect_status,
@@ -14,24 +13,19 @@ from loadtests.common import (
 )
 
 CONFIG: LoadTestConfig = load_config("candidate")
-CACHE = ServiceContextCache()
-
-
-def _build_context() -> dict[str, str]:
-    candidate = ensure_candidate_profile(CONFIG)
-    employer = ensure_employer_profile(CONFIG)
-    return {
-        "candidate_id": candidate["candidate_id"],
-        "candidate_access_token": candidate["access_token"],
-        "employer_telegram_id": str(employer["telegram_id"]),
-    }
 
 
 class CandidateUser(HttpUser):
     wait_time = profile_wait_time(CONFIG)
 
     def on_start(self) -> None:
-        self.ctx = CACHE.get_or_create("candidate_context", _build_context)
+        candidate = ensure_candidate_profile(CONFIG)
+        employer = ensure_employer_profile(CONFIG)
+        self.ctx = {
+            "candidate_id": candidate["candidate_id"],
+            "candidate_access_token": candidate["access_token"],
+            "employer_telegram_id": str(employer["telegram_id"]),
+        }
 
     @task(1)
     def health(self) -> None:

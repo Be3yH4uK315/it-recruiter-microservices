@@ -172,9 +172,10 @@ async def test_candidate_selectors_cover_selection_and_clear() -> None:
         for row in english["inline_keyboard"]
         for btn in row
     )
-    assert any("Очистить" in btn["text"] for row in english["inline_keyboard"] for btn in row)
-    assert not any(
-        "Пропустить" in btn["text"] for row in english["inline_keyboard"] for btn in row
+    assert any(
+        "Очистить / Пропустить" in btn["text"]
+        for row in english["inline_keyboard"]
+        for btn in row
     )
 
     status = await sut._build_candidate_status_selector_markup(

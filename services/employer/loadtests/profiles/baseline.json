@@ -2,10 +2,10 @@
   "name": "baseline",
   "description": "Baseline employer search-session and candidate-pool latency.",
   "host": "http://localhost:8003",
-  "users": 12,
-  "spawn_rate": 2,
+  "users": 20,
+  "spawn_rate": 4,
   "run_time": "120s",
   "stop_timeout": 10,
   "wait_time_min_sec": 0.2,
-  "wait_time_max_sec": 0.7
+  "wait_time_max_sec": 0.5
 }

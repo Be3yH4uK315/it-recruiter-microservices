@@ -6,6 +6,6 @@
   "spawn_rate": 4,
   "run_time": "120s",
   "stop_timeout": 10,
-  "wait_time_min_sec": 0.1,
-  "wait_time_max_sec": 0.4
+  "wait_time_min_sec": 0.2,
+  "wait_time_max_sec": 0.5
 }

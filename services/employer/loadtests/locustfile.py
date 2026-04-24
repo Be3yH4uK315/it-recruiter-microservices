@@ -6,7 +6,6 @@ from locust import HttpUser, task
 
 from loadtests.common import (
     LoadTestConfig,
-    ServiceContextCache,
     ensure_candidate_profile,
     ensure_employer_profile,
     expect_status,
@@ -17,47 +16,42 @@ from loadtests.common import (
 )
 
 CONFIG: LoadTestConfig = load_config("employer")
-CACHE = ServiceContextCache()
-
-
-def _build_context() -> dict[str, str]:
-    candidate = ensure_candidate_profile(CONFIG)
-    employer = ensure_employer_profile(CONFIG)
-    session = request_json(
-        "POST",
-        f"{CONFIG.service_urls['employer']}/api/v1/employers/{employer['employer_id']}/searches",
-        expected_statuses=201,
-        headers=render_request_headers(CONFIG, access_token=employer["access_token"]),
-        json_body={
-            "title": f"Loadtest Search {uuid4()}",
-            "filters": {
-                "role": "Python Backend Engineer",
-                "must_skills": [{"skill": "python", "level": 5}],
-                "nice_skills": [{"skill": "fastapi", "level": 4}],
-                "location": "Novosibirsk",
-                "work_modes": ["remote", "hybrid"],
-                "salary_min": 100000,
-                "salary_max": 400000,
-                "currency": "RUB",
-                "english_level": "B2",
-            },
-        },
-        timeout=CONFIG.request_timeout_sec,
-    )
-    return {
-        "candidate_id": candidate["candidate_id"],
-        "employer_id": employer["employer_id"],
-        "employer_access_token": employer["access_token"],
-        "employer_telegram_id": str(employer["telegram_id"]),
-        "session_id": session["id"],
-    }
 
 
 class EmployerUser(HttpUser):
     wait_time = profile_wait_time(CONFIG)
 
     def on_start(self) -> None:
-        self.ctx = CACHE.get_or_create("employer_context", _build_context)
+        candidate = ensure_candidate_profile(CONFIG)
+        employer = ensure_employer_profile(CONFIG)
+        session = request_json(
+            "POST",
+            f"{CONFIG.service_urls['employer']}/api/v1/employers/{employer['employer_id']}/searches",
+            expected_statuses=201,
+            headers=render_request_headers(CONFIG, access_token=employer["access_token"]),
+            json_body={
+                "title": f"Loadtest Search {uuid4()}",
+                "filters": {
+                    "role": "Python Backend Engineer",
+                    "must_skills": [{"skill": "python", "level": 5}],
+                    "nice_skills": [{"skill": "fastapi", "level": 4}],
+                    "location": "Novosibirsk",
+                    "work_modes": ["remote", "hybrid"],
+                    "salary_min": 100000,
+                    "salary_max": 400000,
+                    "currency": "RUB",
+                    "english_level": "B2",
+                },
+            },
+            timeout=CONFIG.request_timeout_sec,
+        )
+        self.ctx = {
+            "candidate_id": candidate["candidate_id"],
+            "employer_id": employer["employer_id"],
+            "employer_access_token": employer["access_token"],
+            "employer_telegram_id": str(employer["telegram_id"]),
+            "session_id": session["id"],
+        }
 
     @task(1)
     def health(self) -> None:
