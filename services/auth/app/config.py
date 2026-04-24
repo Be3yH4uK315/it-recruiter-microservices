@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     request_id_header_name: str = "X-Request-ID"
     expose_request_id_header: bool = True
 
-    idempotency_enabled: bool = False
+    idempotency_enabled: bool = True
     idempotency_header_name: str = "Idempotency-Key"
 
     swagger_enabled: bool = True
